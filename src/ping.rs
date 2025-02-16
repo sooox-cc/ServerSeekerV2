@@ -49,7 +49,7 @@ pub async fn ping_server(address: &str, port: &u16) -> Result<Server, Error> {
                     ]
             ).to_string();
 
-            Ok(parse_response(response.as_str()))
+            Ok(parse_response(response.as_str())?)
         }
         Err(_) => {
             Err(Error::new(ErrorKind::NetworkUnreachable, "Server did not respond."))

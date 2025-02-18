@@ -1,0 +1,12 @@
+[rescanner]
+repeat = true
+rescan_delay = 60
+port_range_start = 25560
+port_range_end = 25570
+
+[database]
+url = "database.yourdomain.xyz"
+port = 5432
+table = "postgres"
+user = "postgres"
+password = "SuperSuperSecretPassword"

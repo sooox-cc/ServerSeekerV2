@@ -18,10 +18,12 @@ async fn main() {
     let config: &Config = &load_config(config_file);
 
     // Create database URL
-    let database_url = format!("postgresql://{}:{}@{}/postgres",
+    let database_url = format!("postgresql://{}:{}@{}:{}/{}",
                                config.database.user,
                                config.database.password,
-                               config.database.url);
+                               config.database.url,
+                               config.database.port,
+                               config.database.table);
 
     let mut conn = connect(database_url.as_str()).await;
     let servers = fetch_servers(&mut conn).await;

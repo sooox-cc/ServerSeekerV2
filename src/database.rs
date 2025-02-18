@@ -21,7 +21,7 @@ pub async fn fetch_servers(conn: &mut PgConnection) -> Vec<String> {
         .collect()
 }
 
-pub async fn update_server(server: &Server, conn: &mut PgConnection, address: &str) -> Result<PgQueryResult, Error> {
+pub async fn update_server(server: Server, conn: &mut PgConnection, address: &str) -> Result<PgQueryResult, Error> {
     let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t.as_secs() as i32,
         Err(_) => panic!("System clock set before unix epoch!")
@@ -39,8 +39,8 @@ pub async fn update_server(server: &Server, conn: &mut PgConnection, address: &s
 
     let query = query.bind(&server.version)
         .bind(server.protocol)
-        .bind(&server.icon)
-        .bind(&server.motd)
+        .bind(server.icon)
+        .bind(server.motd)
         .bind(server.prevents_reports)
         .bind(server.enforces_secure_chat)
         .bind(lastseen)

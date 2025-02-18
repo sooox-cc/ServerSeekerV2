@@ -34,10 +34,10 @@ async fn main() {
         let server_response: Result<Server, Error> = ping_server(&address, 25565u16).await;
 
         if let Ok(server) = server_response {
-            if let Err(error) = update_server(&server, &mut conn, &*address).await {
+            if let Err(error) = update_server(&server, &mut conn, address.as_str()).await {
                 println!("Failed to update server: {}", error);
             } else {
-                println!("Server updated");
+                println!("Server: {} updated", address);
             }
         }
     }

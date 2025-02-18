@@ -17,19 +17,19 @@ pub struct Database {
 
 #[derive(Deserialize)]
 pub struct Rescanner {
-    pub rescan_delay: u16,
-    pub speed: u16,
     pub repeat: bool,
-    pub port_range: String
+    pub rescan_delay: u16,
+    pub port_range_start: u16,
+    pub port_range_end: u16,
 }
 
 impl Default for Rescanner {
     fn default() -> Self {
         Self {
-            rescan_delay: 60,
-            speed: 1000,
             repeat: true,
-            port_range: "25560 - 25570".to_string()
+            rescan_delay: 60,
+            port_range_start: 25560,
+            port_range_end: 25570,
         }
     }
 }
@@ -47,5 +47,5 @@ pub fn load_config(path: String) -> Config {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap_or_default();
 
-    toml::from_str(&contents).unwrap()
+    toml::from_str(&contents).expect("Failed to parse config!")
 }

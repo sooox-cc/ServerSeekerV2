@@ -15,7 +15,7 @@ const REQUEST: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(address: &str, port: &u16) -> Result<Server, Error> {
+pub async fn ping_server(address: &str, port: u16) -> Result<Server, Error> {
     let address = format!("{}:{}", address, port);
     let socket = SocketAddr::from_str(address.as_str()).unwrap();
 
@@ -45,8 +45,7 @@ pub async fn ping_server(address: &str, port: &u16) -> Result<Server, Error> {
             let response: String = String::from_utf8_lossy(
                 &out_buff[
                     (buff_size.1 + 1 + json_bytes.1).into()
-                        ..
-                    ]
+                        ..]
             ).to_string();
 
             Ok(parse_response(response.as_str())?)

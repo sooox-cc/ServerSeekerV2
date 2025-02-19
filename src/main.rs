@@ -3,13 +3,13 @@ mod config;
 mod ping;
 mod response;
 
-use std::io::Error;
-use config::{load_config, Config};
-use std::io::{Read, Write};
-use std::str::FromStr;
 use crate::database::{connect, fetch_servers, update_server};
 use crate::ping::ping_server;
 use crate::response::Server;
+use config::{load_config, Config};
+use std::io::Error;
+use std::io::{Read, Write};
+use std::str::FromStr;
 
 #[tokio::main]
 async fn main() {

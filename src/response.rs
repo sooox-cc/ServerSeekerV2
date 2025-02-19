@@ -1,6 +1,6 @@
+use serde_json::Value;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
-use serde_json::Value;
 
 pub struct Server {
     pub version: Option<String>,

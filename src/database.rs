@@ -1,7 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-use sqlx::{Connection, Error, PgConnection, Row};
-use sqlx::postgres::PgQueryResult;
 use crate::response::Server;
+use sqlx::postgres::PgQueryResult;
+use sqlx::{Connection, Error, PgConnection, Row};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn connect(database_url: &str) -> PgConnection {
     match PgConnection::connect(&database_url).await {

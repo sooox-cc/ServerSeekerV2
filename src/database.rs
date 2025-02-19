@@ -4,7 +4,13 @@ use sqlx::postgres::PgQueryResult;
 use crate::response::Server;
 
 pub async fn connect(database_url: &str) -> PgConnection {
-    PgConnection::connect(&database_url).await.expect("Failed to connect to database!")
+    match PgConnection::connect(&database_url).await {
+        Ok(conn) => conn,
+        Err(error) => {
+            println!("Failed to connect to database: {}", error);
+            std::process::exit(1);
+        }
+    }
 }
 
 // TODO! Return a stream of results instead of a Vec for performance

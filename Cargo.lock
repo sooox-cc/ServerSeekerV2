@@ -7,6 +7,7 @@ name = "ServerSeekerV2-Rescanner"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
+ "log",
  "serde",
  "serde_json",
  "sqlx",

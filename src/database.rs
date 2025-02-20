@@ -14,22 +14,20 @@ pub async fn connect(database_url: &str) -> PgConnection {
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
-pub async fn fetch_servers(conn: &mut PgConnection) -> Vec<String> {
+pub async fn fetch_servers(conn: &mut PgConnection) -> Result<Vec<String>, Error> {
     // Sort results by oldest
     sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC")
         .fetch_all(conn)
-        .await
-        .unwrap()
+        .await?
         .iter()
         .map(|row| {
-            row.try_get(0).unwrap()
-        })
-        .collect()
+            row.try_get(0)
+        }).collect()
 }
 
 pub async fn update_server(server: Server, conn: &mut PgConnection, address: &str) -> Result<PgQueryResult, Error> {
     let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(t) => t.as_secs() as i32,
+        Ok(t) => t.as_secs(),
         Err(_) => panic!("System clock set before unix epoch!")
     };
 
@@ -49,7 +47,7 @@ pub async fn update_server(server: Server, conn: &mut PgConnection, address: &st
         .bind(server.motd)
         .bind(server.prevents_reports)
         .bind(server.enforces_secure_chat)
-        .bind(lastseen)
+        .bind(lastseen as i32)
         .bind(address);
 
     query.execute(conn).await

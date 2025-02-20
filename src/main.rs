@@ -10,6 +10,7 @@ use config::{load_config, Config};
 use std::io::Error;
 use std::io::{Read, Write};
 use std::str::FromStr;
+use log::error;
 
 #[tokio::main]
 async fn main() {
@@ -26,7 +27,12 @@ async fn main() {
                                config.database.table);
 
     let mut conn = connect(database_url.as_str()).await;
-    let servers = fetch_servers(&mut conn).await;
+
+    let servers = match fetch_servers(&mut conn).await {
+        Ok(servers) => servers,
+        // Error will eventually break from main loop
+        Err(err) => panic!("{}", err),
+    };
 
     for address in servers {
         println!("Pinging: {}", &address);

@@ -17,7 +17,7 @@ const REQUEST: [u8; 9] = [
 
 pub async fn ping_server(address: &str, port: u16) -> Result<Server, Error> {
     let address = format!("{}:{}", address, port);
-    let socket = SocketAddr::from_str(address.as_str()).unwrap();
+    let socket = SocketAddr::from_str(address.as_str()).map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
 
     match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
         Ok(mut stream) => {
@@ -51,7 +51,7 @@ pub async fn ping_server(address: &str, port: u16) -> Result<Server, Error> {
             Ok(parse_response(response.as_str())?)
         }
         Err(_) => {
-            Err(Error::new(ErrorKind::NetworkUnreachable, "Server did not respond."))
+            Err(Error::new(ErrorKind::ConnectionRefused, "Server did not respond."))
         }
     }
 }

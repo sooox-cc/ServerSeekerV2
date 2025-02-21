@@ -25,11 +25,11 @@ async fn main() {
                                config.database.port,
                                config.database.table);
 
-    let mut conn = connect(database_url.as_str()).await;
+    let mut pool = connect(database_url.as_str()).await;
 
     loop {
         // Query servers from database
-        let servers = match fetch_servers(&mut conn).await {
+        let servers = match fetch_servers(&pool).await {
             Ok(servers) => servers,
             Err(_) => continue
         };
@@ -45,7 +45,7 @@ async fn main() {
                     Ok(server) => {
                         if let Ok(server) = parse_response(&server) {
                             // Update server in database
-                            match update_server(server, &mut conn, &address).await {
+                            match update_server(server, &pool, &address).await {
                                 Ok(_) => println!("Server: {} updated in database", &address),
                                 Err(e) => println!("{}", e)
                             }

@@ -31,7 +31,7 @@ pub struct Mod {
 pub fn parse_response(response: &str) -> Result<Server, Error> {
     let json = match Value::from_str(response) {
         Ok(json) => json,
-        Err(err) => return Err(Error::new(ErrorKind::InvalidData, format!("{:?}", err)))
+        Err(e) => return Err(Error::new(ErrorKind::InvalidData, format!("{:?}", e)))
     };
 
     let mut version: Option<String> = None;

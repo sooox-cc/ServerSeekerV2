@@ -1,17 +1,16 @@
 use crate::response::Server;
-use sqlx::postgres::PgQueryResult;
-use sqlx::{Connection, Error, PgConnection, Row};
+use sqlx::{postgres::PgQueryResult, Connection, Error, Executor, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub async fn connect(database_url: &str) -> PgConnection {
-    match PgConnection::connect(&database_url).await {
+pub async fn connect(database_url: &str) -> Pool<Postgres> {
+    match PgPool::connect(&database_url).await {
         Ok(conn) => conn,
         Err(error) => panic!("Unable to connect to database: {}", error),
     }
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
-pub async fn fetch_servers(conn: &mut PgConnection) -> Result<Vec<String>, Error> {
+pub async fn fetch_servers(conn: &PgPool) -> Result<Vec<String>, Error> {
     // Sort results by oldest
     sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
         .fetch_all(conn)
@@ -22,7 +21,7 @@ pub async fn fetch_servers(conn: &mut PgConnection) -> Result<Vec<String>, Error
         }).collect()
 }
 
-pub async fn update_server(server: Server, conn: &mut PgConnection, address: &str) -> Result<PgQueryResult, Error> {
+pub async fn update_server(server: Server, conn: &PgPool, address: &str) -> Result<PgQueryResult, Error> {
     let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t.as_secs(),
         Err(_) => panic!("System clock set before unix epoch!")

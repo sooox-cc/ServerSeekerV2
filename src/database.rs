@@ -6,17 +6,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub async fn connect(database_url: &str) -> PgConnection {
     match PgConnection::connect(&database_url).await {
         Ok(conn) => conn,
-        Err(error) => {
-            println!("Failed to connect to database: {}", error);
-            std::process::exit(1);
-        }
+        Err(error) => panic!("Unable to connect to database: {}", error),
     }
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
 pub async fn fetch_servers(conn: &mut PgConnection) -> Result<Vec<String>, Error> {
     // Sort results by oldest
-    sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC")
+    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
         .fetch_all(conn)
         .await?
         .iter()
@@ -39,9 +36,8 @@ pub async fn update_server(server: Server, conn: &mut PgConnection, address: &st
         preventsreports = $5, \
         enforcesecure = $6, \
         lastseen = $7 \
-        WHERE address = $8");
-
-    let query = query.bind(&server.version)
+        WHERE address = $8")
+        .bind(&server.version)
         .bind(server.protocol)
         .bind(server.icon)
         .bind(server.motd)

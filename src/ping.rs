@@ -1,4 +1,3 @@
-use crate::response::{parse_response, Server};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::str::FromStr;
@@ -15,15 +14,16 @@ const REQUEST: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(address: &str, port: u16) -> Result<Server, Error> {
+pub async fn ping_server(address: &str, port: u16) -> Result<String, Error> {
     let address = format!("{}:{}", address, port);
     let socket = SocketAddr::from_str(address.as_str()).map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
 
     match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
         Ok(mut stream) => {
             stream.write(&REQUEST)?;
-            let mut buff: [u8; 1024] = [0; 1024];
+            let mut buff = [0; 1024];
 
+            // TODO! REPLACE ALL OF THIS
             // Read the first buffer, getting the initial bytes needed
             let mut total_read = stream.read(&mut buff)?;
             // Grab the final buffer size
@@ -42,17 +42,9 @@ pub async fn ping_server(address: &str, port: u16) -> Result<Server, Error> {
                 total_read += read;
             }
 
-            let response: String = String::from_utf8_lossy(
-                &out_buff[
-                    (buff_size.1 + 1 + json_bytes.1).into()
-                        ..]
-            ).to_string();
-
-            Ok(parse_response(response.as_str())?)
+            Ok(String::from_utf8_lossy(&out_buff[(buff_size.1 + 1 + json_bytes.1).into()..]).to_string())
         }
-        Err(_) => {
-            Err(Error::new(ErrorKind::ConnectionRefused, "Server did not respond."))
-        }
+        Err(e) => Err(e),
     }
 }
 

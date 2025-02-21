@@ -5,12 +5,11 @@ mod response;
 
 use crate::database::{connect, fetch_servers, update_server};
 use crate::ping::ping_server;
-use crate::response::Server;
+use crate::response::parse_response;
 use config::{load_config, Config};
-use std::io::Error;
+use std::error::Error;
 use std::io::{Read, Write};
 use std::str::FromStr;
-use log::error;
 
 #[tokio::main]
 async fn main() {
@@ -28,23 +27,39 @@ async fn main() {
 
     let mut conn = connect(database_url.as_str()).await;
 
-    let servers = match fetch_servers(&mut conn).await {
-        Ok(servers) => servers,
-        // Error will eventually break from main loop
-        Err(err) => panic!("{}", err),
-    };
+    loop {
+        // Query servers from database
+        let servers = match fetch_servers(&mut conn).await {
+            Ok(servers) => servers,
+            Err(_) => continue
+        };
 
-    for address in servers {
-        println!("Pinging: {}", &address);
+        // Loop over every result
+        for address in servers {
+            println!("Pinging: {}", &address);
 
-        let server_response: Result<Server, Error> = ping_server(&address, 25565u16).await;
+            // Ping server
+            match ping_server(&address, 25565u16).await {
+                Ok(server) => {
 
-        if let Ok(server) = server_response {
-            if let Err(error) = update_server(server, &mut conn, address.as_str()).await {
-                println!("Failed to update server: {}", error);
-            } else {
-                println!("Server: {} updated", address);
+                    // Attempt to parse response from server
+                    if let Ok(server) = parse_response(&server) {
+
+                        // Update server in database
+                        match update_server(server, &mut conn, &address).await {
+                            Ok(_) => {},
+                            Err(err) => println!("{}", err)
+                        }
+                    }
+                }
+                Err(_) => continue
             }
+        }
+
+        println!("Finished pinging all servers");
+        if !config.rescanner.repeat {
+            println!("Repeat is not enabled in config file! Exiting...");
+            std::process::exit(0);
         }
     }
 }

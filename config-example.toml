@@ -1,8 +1,8 @@
 [rescanner]
 repeat = true
 rescan_delay = 60
-port_range_start = 25560
-port_range_end = 25570
+port_range_start = 25565
+port_range_end = 25565
 
 [database]
 url = "database.yourdomain.xyz"

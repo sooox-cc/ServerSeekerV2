@@ -36,23 +36,23 @@ async fn main() {
 
         // Loop over every result
         for address in servers {
-            println!("Pinging: {}", &address);
 
-            // Ping server
-            match ping_server(&address, 25565u16).await {
-                Ok(server) => {
+            for port in config.rescanner.port_range_start..=config.rescanner.port_range_end {
+                println!("Pinging: {}:{}", &address,port);
 
-                    // Attempt to parse response from server
-                    if let Ok(server) = parse_response(&server) {
-
-                        // Update server in database
-                        match update_server(server, &mut conn, &address).await {
-                            Ok(_) => {},
-                            Err(err) => println!("{}", err)
+                // Ping server
+                match ping_server(&address, port).await {
+                    Ok(server) => {
+                        if let Ok(server) = parse_response(&server) {
+                            // Update server in database
+                            match update_server(server, &mut conn, &address).await {
+                                Ok(_) => println!("Server: {} updated in database", &address),
+                                Err(e) => println!("{}", e)
+                            }
                         }
                     }
+                    Err(_) => continue
                 }
-                Err(_) => continue
             }
         }
 

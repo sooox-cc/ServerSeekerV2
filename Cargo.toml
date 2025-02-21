@@ -12,3 +12,4 @@ tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
 bigdecimal = "0.4.7"
 sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio"] }
 log = "0.4.25"
+indicatif = "0.17.11"

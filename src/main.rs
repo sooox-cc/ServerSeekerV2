@@ -7,11 +7,10 @@ mod colors;
 use crate::database::{connect, fetch_servers, update_server};
 use crate::ping::ping_server;
 use crate::response::parse_response;
-use config::{load_config, Config};
-use std::error::Error;
-use std::io::{Read, Write};
-use std::str::FromStr;
 use crate::colors::{GREEN, RED, RESET, YELLOW};
+use config::{load_config, Config};
+use tokio::spawn;
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 
 #[tokio::main]
 async fn main() {
@@ -33,31 +32,39 @@ async fn main() {
     loop {
         // Query servers from database
         let servers = match fetch_servers(&pool).await {
-            Ok(servers) => servers,
+            Ok(servers) => {
+                println!("{GREEN}[INFO] Found {} servers to rescan!{RESET}", servers.len());
+                servers
+            },
             Err(_) => continue
         };
 
+        let style = ProgressStyle::default_bar().progress_chars("##-");
+
         // Loop over every result
-        for address in servers {
+        for address in (&servers).iter().progress_with_style(style) {
+            let port_start = config.rescanner.port_range_start;
+            let port_end = config.rescanner.port_range_end;
 
-            for port in config.rescanner.port_range_start..=config.rescanner.port_range_end {
-                println!("{GREEN}[INFO] Pinging: {address}:{port}{RESET}");
 
+            for port in port_start..=port_end {
                 // Ping server
                 match ping_server(&address, port).await {
                     Ok(server) => {
                         if let Ok(server) = parse_response(&server) {
                             // Update server in database
                             match update_server(server, &pool, &address).await {
-                                Ok(_) => println!("{GREEN}[INFO] Server: {address} updated in database{RESET}"),
+                                Ok(_) => (),
                                 Err(e) => println!("{RED}{e}{RESET}")
                             }
                         }
                     }
                     Err(_) => continue
                 }
+
             }
         }
+
 
         println!("Finished pinging all servers");
         if !config.rescanner.repeat {

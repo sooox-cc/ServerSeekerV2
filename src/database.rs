@@ -1,11 +1,12 @@
 use crate::response::Server;
 use sqlx::{postgres::PgQueryResult, Connection, Error, Executor, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::colors::{RED, RESET};
 
 pub async fn connect(database_url: &str) -> Pool<Postgres> {
     match PgPool::connect(&database_url).await {
         Ok(pool) => pool,
-        Err(e) => panic!("Unable to connect to database: {e}"),
+        Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
     }
 }
 
@@ -24,7 +25,7 @@ pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
 pub async fn update_server(server: Server, pool: &PgPool, address: &str) -> Result<PgQueryResult, Error> {
     let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t.as_secs(),
-        Err(_) => panic!("System clock set before unix epoch!")
+        Err(_) => panic!("{RED}System clock set before unix epoch!{RESET}")
     };
 
     let query = sqlx::query("UPDATE servers SET \

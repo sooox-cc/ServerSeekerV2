@@ -4,16 +4,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn connect(database_url: &str) -> Pool<Postgres> {
     match PgPool::connect(&database_url).await {
-        Ok(conn) => conn,
-        Err(error) => panic!("Unable to connect to database: {}", error),
+        Ok(pool) => pool,
+        Err(e) => panic!("Unable to connect to database: {e}"),
     }
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
-pub async fn fetch_servers(conn: &PgPool) -> Result<Vec<String>, Error> {
+pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
     // Sort results by oldest
     sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
-        .fetch_all(conn)
+        .fetch_all(pool)
         .await?
         .iter()
         .map(|row| {
@@ -21,7 +21,7 @@ pub async fn fetch_servers(conn: &PgPool) -> Result<Vec<String>, Error> {
         }).collect()
 }
 
-pub async fn update_server(server: Server, conn: &PgPool, address: &str) -> Result<PgQueryResult, Error> {
+pub async fn update_server(server: Server, pool: &PgPool, address: &str) -> Result<PgQueryResult, Error> {
     let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(t) => t.as_secs(),
         Err(_) => panic!("System clock set before unix epoch!")
@@ -49,5 +49,5 @@ pub async fn update_server(server: Server, conn: &PgPool, address: &str) -> Resu
         .bind(server.max_players)
         .bind(address);
 
-    query.execute(conn).await
+    query.execute(pool).await
 }

@@ -2,6 +2,7 @@ mod database;
 mod config;
 mod ping;
 mod response;
+mod colors;
 
 use crate::database::{connect, fetch_servers, update_server};
 use crate::ping::ping_server;
@@ -10,11 +11,13 @@ use config::{load_config, Config};
 use std::error::Error;
 use std::io::{Read, Write};
 use std::str::FromStr;
+use crate::colors::{GREEN, RED, RESET, YELLOW};
 
 #[tokio::main]
 async fn main() {
     // Handle config file
     let config_file: String = std::env::args().nth(1).unwrap_or("config.toml".to_string());
+    println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
     let config: &Config = &load_config(config_file);
 
     // Create database URL
@@ -25,7 +28,7 @@ async fn main() {
                                config.database.port,
                                config.database.table);
 
-    let mut pool = connect(database_url.as_str()).await;
+    let pool = connect(database_url.as_str()).await;
 
     loop {
         // Query servers from database
@@ -38,7 +41,7 @@ async fn main() {
         for address in servers {
 
             for port in config.rescanner.port_range_start..=config.rescanner.port_range_end {
-                println!("Pinging: {}:{}", &address,port);
+                println!("{GREEN}[INFO] Pinging: {address}:{port}{RESET}");
 
                 // Ping server
                 match ping_server(&address, port).await {
@@ -46,8 +49,8 @@ async fn main() {
                         if let Ok(server) = parse_response(&server) {
                             // Update server in database
                             match update_server(server, &pool, &address).await {
-                                Ok(_) => println!("Server: {} updated in database", &address),
-                                Err(e) => println!("{}", e)
+                                Ok(_) => println!("{GREEN}[INFO] Server: {address} updated in database{RESET}"),
+                                Err(e) => println!("{RED}{e}{RESET}")
                             }
                         }
                     }
@@ -58,7 +61,7 @@ async fn main() {
 
         println!("Finished pinging all servers");
         if !config.rescanner.repeat {
-            println!("Repeat is not enabled in config file! Exiting...");
+            println!("{YELLOW}[INFO] Repeat is not enabled in config file! Exiting...{RESET}");
             std::process::exit(0);
         }
     }

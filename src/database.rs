@@ -34,8 +34,10 @@ pub async fn update_server(server: Server, conn: &PgPool, address: &str) -> Resu
         motd = $4, \
         preventsreports = $5, \
         enforcesecure = $6, \
-        lastseen = $7 \
-        WHERE address = $8")
+        lastseen = $7, \
+        onlineplayers = $8, \
+        maxplayers = $9 \
+        WHERE address = $10")
         .bind(&server.version)
         .bind(server.protocol)
         .bind(server.icon)
@@ -43,6 +45,8 @@ pub async fn update_server(server: Server, conn: &PgPool, address: &str) -> Resu
         .bind(server.prevents_reports)
         .bind(server.enforces_secure_chat)
         .bind(lastseen as i32)
+        .bind(server.online_players)
+        .bind(server.max_players)
         .bind(address);
 
     query.execute(conn).await

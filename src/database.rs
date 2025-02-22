@@ -1,7 +1,7 @@
+use crate::colors::{RED, RESET};
 use crate::response::Server;
 use sqlx::{postgres::PgQueryResult, Connection, Error, Executor, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::colors::{RED, RESET};
 
 pub async fn connect(database_url: &str) -> Pool<Postgres> {
     match PgPool::connect(&database_url).await {

@@ -4,13 +4,12 @@ mod ping;
 mod response;
 mod colors;
 
-use crate::database::{connect, fetch_servers, update_server};
-use crate::ping::ping_server;
-use crate::response::parse_response;
-use crate::colors::{GREEN, RED, RESET, YELLOW};
+use colors::{GREEN, RED, RESET, YELLOW};
+use database::{connect, fetch_servers, update_server};
+use ping::ping_server;
+use response::parse_response;
 use config::{load_config, Config};
-use tokio::spawn;
-use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
+use indicatif::{ProgressIterator, ProgressStyle};
 
 #[tokio::main]
 async fn main() {
@@ -27,7 +26,23 @@ async fn main() {
                                config.database.port,
                                config.database.table);
 
+    let port_start = config.rescanner.port_range_start;
+    let port_end = config.rescanner.port_range_end;
+    let total_ports = config.rescanner.total_ports();
+
+    if total_ports > 24 {
+        println!("{RED}[WARN] Large amount of ports! Scans will take exponentially longer for each port to scan!{RESET}");
+    }
+
+    if !config.rescanner.repeat {
+        println!("{YELLOW}[WARN] Repeat is not enabled in config file! Will only scan once!{RESET}");
+    }
+
     let pool = connect(database_url.as_str()).await;
+    println!("{GREEN}[INFO] Scanning port range {} - {} ({} port(s) per host){RESET}",
+             &port_start,
+             &port_end,
+             total_ports);
 
     loop {
         // Query servers from database
@@ -39,14 +54,8 @@ async fn main() {
             Err(_) => continue
         };
 
-        let style = ProgressStyle::default_bar().progress_chars("##-");
-
         // Loop over every result
-        for address in (&servers).iter().progress_with_style(style) {
-            let port_start = config.rescanner.port_range_start;
-            let port_end = config.rescanner.port_range_end;
-
-
+        for address in (&servers).iter().progress_with_style(ProgressStyle::default_bar().progress_chars("##-")) {
             for port in port_start..=port_end {
                 // Ping server
                 match ping_server(&address, port).await {
@@ -61,14 +70,12 @@ async fn main() {
                     }
                     Err(_) => continue
                 }
-
             }
         }
 
 
-        println!("Finished pinging all servers");
+        println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
         if !config.rescanner.repeat {
-            println!("{YELLOW}[INFO] Repeat is not enabled in config file! Exiting...{RESET}");
             std::process::exit(0);
         }
     }

@@ -1,9 +1,12 @@
-use std::io::{Error, ErrorKind, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::io::{Error, ErrorKind};
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+use tokio::time::timeout;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
-const REQUEST: [u8; 9] = [
+const PAYLOAD: [u8; 9] = [
     6, // Size: Amount of bytes in the message
     0, // ID: Has to be 0
     0, // Protocol Version: Can be anything as long as it's a valid varint
@@ -18,34 +21,29 @@ pub async fn ping_server(address: &str, port: u16) -> Result<String, Error> {
     let address = format!("{}:{}", address, port);
     let socket = SocketAddr::from_str(address.as_str()).map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
 
-    match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
-        Ok(mut stream) => {
-            stream.write(&REQUEST)?;
-            let mut buff = [0; 1024];
+    // Connect and create buffer
+    let mut stream = timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
+    let mut buffer = [0; 2048];
 
-            // TODO! REPLACE ALL OF THIS
-            // Read the first buffer, getting the initial bytes needed
-            let mut total_read = stream.read(&mut buff)?;
-            // Grab the final buffer size
-            let buff_size = decode(&buff.to_vec());
-            // and use that to calculate the total amount of bytes needed (in the entire packet)
-            let bytes_needed = buff_size.0 + (buff_size.1 as usize);
-            let mut out_buff = vec![];
-            out_buff.extend_from_slice(&buff[..total_read]);
-            // Just incase, we can also calculate the final size of the json
-            let json_bytes = decode(&(buff[(buff_size.1+1).into()..]));
+    // Send payload
+    stream.write(&PAYLOAD).await?;
+    let mut total_read = stream.read(&mut buffer).await?;
 
-            // Repeat until we read everything
-            while total_read < bytes_needed {
-                let read = stream.read(&mut buff)?;
-                out_buff.extend_from_slice(&buff[..read]);
-                total_read += read;
-            }
+    // Decode
+    let decoded_bytes = decode(&buffer);
+    let bytes_needed = decoded_bytes.0 + decoded_bytes.1 as usize;
+    let mut output = vec![];
+    output.extend_from_slice(&buffer[..total_read]);
+    let json = decode(&(buffer[(decoded_bytes.1+1).into()..]));
 
-            Ok(String::from_utf8_lossy(&out_buff[(buff_size.1 + 1 + json_bytes.1).into()..]).to_string())
-        }
-        Err(e) => Err(e),
+    // Read everything
+    while total_read < bytes_needed {
+        let read = stream.read(&mut buffer).await?;
+        output.extend_from_slice(&buffer[..read]);
+        total_read += read;
     }
+
+    Ok(String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string())
 }
 
 fn decode(bytes: &[u8]) -> (usize, u8) {

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::str::FromStr;
 
 pub struct Server {
@@ -9,10 +9,10 @@ pub struct Server {
     pub motd: Option<String>,
     pub prevents_reports: Option<bool>,
     pub enforces_secure_chat: Option<bool>,
+    pub online_players: Option<i64>,
+    pub max_players: Option<i64>,
     pub mods: Option<Vec<Mod>>,
-    pub players: Option<Vec<Player>>,
-    pub online_players: Option<i32>,
-    pub max_players: Option<i32>,
+    pub players: Vec<Player>,
 }
 
 pub struct Player {
@@ -29,37 +29,55 @@ pub struct Mod {
 // I no longer care about trying to make the parsing code good,
 // there is no proper standard for how servers should respond so this is what you get
 pub fn parse_response(response: &str) -> Result<Server, Error> {
-    let json = match Value::from_str(response) {
-        Ok(json) => json,
-        Err(e) => return Err(Error::new(ErrorKind::InvalidData, format!("{:?}", e)))
-    };
+    let json = Value::from_str(response)?;
 
     let mut version: Option<String> = None;
     let mut protocol: Option<i64> = None;
-    let mut icon: Option<String> = None;
-    let mut prevents_reports: Option<bool> = None;
-    let mut enforces_secure_chat: Option<bool> = None;
+    let mut online_players: Option<i64> = None;
+    let mut max_players: Option<i64> = None;
+    let mut players: Vec<Player> = vec![];
 
+    let icon: Option<String> = if let Some(value) = json["favicon"].as_str() {
+        Some(value.to_string())
+    } else { None };
+
+    let prevents_reports: Option<bool> = if let Some(value) = json["preventsChatReports"].as_bool() {
+        Some(value)
+    } else { None };
+
+    let enforces_secure_chat: Option<bool> = if let Some(value) = json["enforceSecureChat"].as_bool() {
+        Some(value)
+    } else { None };
+
+    // Version object
     if let Some(value) = json.get("version") {
-        if let Some(name) = value.get("name") {
-            version = name.as_str().map(|s| s.to_string());
+        if let Some(name) = value["name"].as_str() {
+            version = Some(name.to_string());
         }
 
-        if let Some(value) = value.get("protocol") {
-            protocol = value.as_i64()
+        if let Some(proto) = value["protocol"].as_i64() {
+            protocol = Some(proto);
         }
     }
 
-    if let Some(value) = json.get("icon") {
-        icon = value.as_str().map(|s| s.to_string())
-    }
+    // Players object
+    if let Some(value) = json.get("players") {
+        if let Some(online) = value["online"].as_i64() {
+            online_players = Some(online);
+        }
 
-    if let Some(value) = json.get("preventsChatReports") {
-        prevents_reports = value.as_bool();
-    }
+        if let Some(max) = value["max"].as_i64() {
+            max_players = Some(max)
+        }
 
-    if let Some(value) = json.get("enforceSecureChat") {
-        enforces_secure_chat = value.as_bool();
+        if let Some(player_sample) = value["sample"].as_array() {
+            for player in player_sample {
+                players.push(Player {
+                    username: player["username"].as_str().unwrap_or("").to_string(),
+                    uuid: player["uuid"].as_str().unwrap_or("").to_string(),
+                });
+            }
+        }
     }
 
     Ok(Server {
@@ -70,8 +88,8 @@ pub fn parse_response(response: &str) -> Result<Server, Error> {
         prevents_reports,
         enforces_secure_chat,
         mods: None,
-        players: None,
-        online_players: None,
-        max_players: None,
+        players,
+        online_players,
+        max_players
     })
 }

@@ -1,7 +1,7 @@
+use crate::colors::{RED, RESET};
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
-use crate::colors::{RED, RESET};
 
 #[derive(Deserialize)]
 pub struct Config {

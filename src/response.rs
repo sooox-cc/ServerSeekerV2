@@ -1,7 +1,7 @@
 use serde_json::Value;
-use std::io::Error;
 use std::str::FromStr;
 
+#[derive(Debug)]
 pub struct Server {
     pub version: Option<String>,
     pub protocol: Option<i64>,
@@ -15,12 +15,14 @@ pub struct Server {
     pub players: Vec<Player>,
 }
 
+#[derive(Debug)]
 pub struct Player {
     pub username: String,
-    // Replace this with a UUID type
+    // TODO! Replace this with a UUID type
     pub uuid: String
 }
 
+#[derive(Debug)]
 pub struct Mod {
     pub mod_id: String,
     pub mod_name: String,
@@ -28,7 +30,7 @@ pub struct Mod {
 
 // I no longer care about trying to make the parsing code good,
 // there is no proper standard for how servers should respond so this is what you get
-pub fn parse_response(response: &str) -> Result<Server, Error> {
+pub fn parse_response(response: &str) -> anyhow::Result<Server> {
     let json = Value::from_str(response)?;
 
     let mut version: Option<String> = None;

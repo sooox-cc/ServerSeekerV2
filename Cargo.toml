@@ -11,3 +11,4 @@ toml = "0.8.19"
 tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
 sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio"] }
 indicatif = "0.17.11"
+anyhow = "1.0.97"

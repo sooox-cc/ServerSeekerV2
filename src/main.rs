@@ -4,16 +4,15 @@ mod ping;
 mod response;
 mod colors;
 
-use std::sync::Arc;
-use std::time::Duration;
 use colors::{GREEN, RED, RESET, YELLOW};
+use config::{load_config, Config};
 use database::{connect, fetch_servers, update_server};
+use indicatif::{ProgressIterator, ProgressStyle};
 use ping::ping_server;
 use response::parse_response;
-use config::{load_config, Config};
-use indicatif::{ProgressIterator, ProgressStyle};
 use sqlx::pool::PoolConnection;
 use sqlx::Postgres;
+use std::time::Duration;
 use tokio::task;
 
 #[tokio::main]

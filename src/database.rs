@@ -1,8 +1,8 @@
 use crate::colors::{RED, RESET};
 use crate::response::Server;
+use sqlx::pool::PoolConnection;
 use sqlx::{postgres::PgQueryResult, Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use sqlx::pool::PoolConnection;
 
 pub async fn connect(database_url: &str) -> Pool<Postgres> {
     match PgPool::connect(&database_url).await {
@@ -23,11 +23,8 @@ pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
         }).collect()
 }
 
-pub async fn update_server(server: Server, address: &str, conn: PoolConnection<Postgres>) -> Result<PgQueryResult, Error> {
-    let lastseen = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(t) => t.as_secs() as i32,
-        Err(_) => panic!("{RED}System clock set before unix epoch!{RESET}")
-    };
+pub async fn update_server(server: Server, address: &str, conn: PoolConnection<Postgres>) -> anyhow::Result<PgQueryResult> {
+    let lastseen = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
     let query = sqlx::query("UPDATE servers SET \
         version = $1, \
@@ -51,6 +48,5 @@ pub async fn update_server(server: Server, address: &str, conn: PoolConnection<P
         .bind(server.max_players)
         .bind(address);
 
-    println!("Excuted query!");
-    query.execute(&mut conn.detach()).await
+    Ok(query.execute(&mut conn.detach()).await?)
 }

@@ -1,8 +1,6 @@
-use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
-use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -17,12 +15,12 @@ const PAYLOAD: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(address: &str, port: u16) -> Result<String, Error> {
+pub async fn ping_server(address: &str, port: u16) -> anyhow::Result<String> {
     let address = format!("{}:{}", address, port);
-    let socket = SocketAddr::from_str(address.as_str()).map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
+    let socket = SocketAddr::from_str(address.as_str())?;
 
     // Connect and create buffer
-    let mut stream = timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
+    let mut stream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
     let mut buffer = [0; 2048];
 
     // Send payload

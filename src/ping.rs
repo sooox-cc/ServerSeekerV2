@@ -43,7 +43,7 @@ pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<Server> {
     }
 
     let response = String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string();
-    parse_response(response, address)
+    parse_response(response, host)
 }
 
 fn decode(bytes: &[u8]) -> (usize, u8) {

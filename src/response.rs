@@ -7,32 +7,33 @@ pub struct Server {
     pub port: i32,
     pub version: Option<String>,
     pub protocol: Option<i32>,
-    pub icon: Option<String>,
     pub motd: Option<String>,
+    pub icon: Option<String>,
     pub prevents_reports: Option<bool>,
     pub enforces_secure_chat: Option<bool>,
     pub online_players: Option<i32>,
     pub max_players: Option<i32>,
+    pub software: Option<String>,
     pub mods: Vec<Mod>,
     pub players: Vec<Player>,
 }
 
 #[derive(Debug)]
 pub struct Player {
-    pub username: String,
+    pub username: Option<String>,
     // TODO! Replace this with a UUID type
-    pub uuid: String
+    pub uuid: Option<String>
 }
 
 #[derive(Debug)]
 pub struct Mod {
-    pub mod_id: String,
-    pub mod_name: String,
+    pub mod_id: Option<String>,
+    pub mod_name: Option<String>,
 }
 
 // I no longer care about trying to make the parsing code good,
 // there is no proper standard for how servers should respond so this is what you get
-pub fn parse_response(response: String, address: String) -> anyhow::Result<Server> {
+pub fn parse_response(response: String, host: (&str, u16)) -> anyhow::Result<Server> {
     let json = Value::from_str(response.as_str())?;
 
     let mut version: Option<String> = None;
@@ -42,26 +43,16 @@ pub fn parse_response(response: String, address: String) -> anyhow::Result<Serve
     let mut players: Vec<Player> = vec![];
     let mut mods: Vec<Mod> = vec![];
 
-    let icon: Option<String> = if let Some(value) = json["favicon"].as_str() {
-        Some(value.to_string())
-    } else { None };
-
-    let prevents_reports: Option<bool> = if let Some(value) = json["preventsChatReports"].as_bool() {
-        Some(value)
-    } else { None };
-
-    let enforces_secure_chat: Option<bool> = if let Some(value) = json["enforceSecureChat"].as_bool() {
-        Some(value)
-    } else { None };
+    let icon = json["icon"].as_str().map(String::from);
+    let prevents_reports = json["preventsChatReports"].as_bool();
+    let enforces_secure_chat = json["enforcesChat"].as_bool();
 
     // Version object
     if let Some(value) = json.get("version") {
-        if let Some(name) = value["name"].as_str() {
-            version = Some(name.to_string());
-        }
+        version = value["name"].as_str().map(String::from);
 
-        if let Some(proto) = value["protocol"].as_i64() {
-            protocol = Some(proto as i32);
+        if let Some(value) = value["protocol"].as_i64() {
+            protocol = Some(value as i32)
         }
     }
 
@@ -76,36 +67,37 @@ pub fn parse_response(response: String, address: String) -> anyhow::Result<Serve
         }
 
         if let Some(player_sample) = value["sample"].as_array() {
-            for player in player_sample {
+            player_sample.iter().for_each(|player| {
                 players.push(Player {
-                    username: player["username"].as_str().unwrap_or("").to_string(),
-                    uuid: player["uuid"].as_str().unwrap_or("").to_string(),
-                });
-            }
-        }
-    }
-
-    if let Some(mods_array) = json["mods"].as_array() {
-        for entry in mods_array {
-            mods.push(Mod {
-                mod_id: entry[""].as_str().unwrap_or("").to_string(),
-                mod_name: entry[""].as_str().unwrap_or("").to_string(),
+                    username: player["name"].as_str().map(String::from),
+                    uuid: player["id"].as_str().map(String::from)
+                })
             })
         }
     }
 
+    if let Some(mods_array) = json["mods"].as_array() {
+        mods_array.iter().for_each(|m| {
+            mods.push(Mod {
+                mod_name: m["modid"].as_str().map(String::from),
+                mod_id: m["version"].as_str().map(String::from)
+            })
+        })
+    }
+
     Ok(Server {
-        address,
-        port: 25565,
+        address: host.0.to_string(),
+        port: host.1 as i32,
         version,
         protocol,
-        icon,
         motd: None,
+        icon,
         prevents_reports,
         enforces_secure_chat,
-        mods,
-        players,
         online_players,
-        max_players
+        max_players,
+        software: None,
+        mods,
+        players
     })
 }

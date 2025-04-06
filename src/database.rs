@@ -21,7 +21,7 @@ pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
         .collect()
 }
 
-pub async fn upsert(server: Server, conn: &PgPool) -> anyhow::Result<PgQueryResult> {
+pub async fn update(server: Server, conn: &PgPool) -> anyhow::Result<PgQueryResult> {
     let lastseen = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
     let query = sqlx::query!("UPDATE servers SET \

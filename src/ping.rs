@@ -1,3 +1,4 @@
+use crate::response::{parse_response, Server};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -15,8 +16,8 @@ const PAYLOAD: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(address: &str, port: u16) -> anyhow::Result<String> {
-    let address = format!("{}:{}", address, port);
+pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<Server> {
+    let address = format!("{}:{}", host.0, host.1);
     let socket = SocketAddr::from_str(address.as_str())?;
 
     // Connect and create buffer
@@ -41,7 +42,8 @@ pub async fn ping_server(address: &str, port: u16) -> anyhow::Result<String> {
         total_read += read;
     }
 
-    Ok(String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string())
+    let response = String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string();
+    parse_response(response, address)
 }
 
 fn decode(bytes: &[u8]) -> (usize, u8) {

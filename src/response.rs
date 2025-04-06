@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Server {
+    pub address: String,
     pub version: Option<String>,
     pub protocol: Option<i64>,
     pub icon: Option<String>,
@@ -11,7 +12,7 @@ pub struct Server {
     pub enforces_secure_chat: Option<bool>,
     pub online_players: Option<i64>,
     pub max_players: Option<i64>,
-    pub mods: Option<Vec<Mod>>,
+    pub mods: Vec<Mod>,
     pub players: Vec<Player>,
 }
 
@@ -30,14 +31,15 @@ pub struct Mod {
 
 // I no longer care about trying to make the parsing code good,
 // there is no proper standard for how servers should respond so this is what you get
-pub fn parse_response(response: &str) -> anyhow::Result<Server> {
-    let json = Value::from_str(response)?;
+pub fn parse_response(response: String, address: String) -> anyhow::Result<Server> {
+    let json = Value::from_str(response.as_str())?;
 
     let mut version: Option<String> = None;
     let mut protocol: Option<i64> = None;
     let mut online_players: Option<i64> = None;
     let mut max_players: Option<i64> = None;
     let mut players: Vec<Player> = vec![];
+    let mut mods: Vec<Mod> = vec![];
 
     let icon: Option<String> = if let Some(value) = json["favicon"].as_str() {
         Some(value.to_string())
@@ -82,14 +84,24 @@ pub fn parse_response(response: &str) -> anyhow::Result<Server> {
         }
     }
 
+    if let Some(mods_array) = json["mods"].as_array() {
+        for entry in mods_array {
+            mods.push(Mod {
+                mod_id: entry[""].as_str().unwrap_or("").to_string(),
+                mod_name: entry[""].as_str().unwrap_or("").to_string(),
+            })
+        }
+    }
+
     Ok(Server {
+        address,
         version,
         protocol,
         icon,
         motd: None,
         prevents_reports,
         enforces_secure_chat,
-        mods: None,
+        mods,
         players,
         online_players,
         max_players

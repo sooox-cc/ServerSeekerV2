@@ -18,12 +18,11 @@ pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
         .fetch_all(pool)
         .await?
         .iter()
-        .map(|row| {
-            row.try_get(0)
-        }).collect()
+        .map(|row| { row.try_get(0) })
+        .collect()
 }
 
-pub async fn update_server(server: Server, address: &str, conn: PoolConnection<Postgres>) -> anyhow::Result<PgQueryResult> {
+pub async fn update_server(server: Server, conn: PoolConnection<Postgres>) -> anyhow::Result<PgQueryResult> {
     let lastseen = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
     let query = sqlx::query("UPDATE servers SET \
@@ -46,7 +45,7 @@ pub async fn update_server(server: Server, address: &str, conn: PoolConnection<P
         .bind(lastseen)
         .bind(server.online_players)
         .bind(server.max_players)
-        .bind(address);
+        .bind(server.address);
 
     Ok(query.execute(&mut conn.detach()).await?)
 }

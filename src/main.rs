@@ -6,14 +6,9 @@ mod colors;
 
 use colors::{GREEN, RED, RESET, YELLOW};
 use config::{load_config, Config};
-use database::{connect, fetch_servers, update_server};
-use indicatif::{ProgressIterator, ProgressStyle};
-use ping::ping_server;
-use response::parse_response;
-use sqlx::pool::PoolConnection;
-use sqlx::Postgres;
+use database::{connect, fetch_servers};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
-use tokio::task;
 
 #[tokio::main]
 async fn main() {
@@ -22,10 +17,6 @@ async fn main() {
     println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
     let config: Config = load_config(config_file);
 
-    run(config).await;
-}
-
-async fn run(config: Config) {
     // Create database URL
     let database_url = format!("postgresql://{}:{}@{}:{}/{}",
                                config.database.user,
@@ -65,13 +56,14 @@ async fn run(config: Config) {
             }
         };
 
-        for address in servers.iter().progress_with_style(ProgressStyle::default_bar().progress_chars("##-")) {
-            for port in port_start..=port_end {
-                if let Some(conn) = pool.try_acquire() {
-                    spawn_task(address.to_string(), port, conn).await;
-                }
-            }
-        };
+        let progress_bar = ProgressBar::new(servers.len() as u64).with_style(ProgressStyle::default_bar().progress_chars("##-"));
+        let async_servers = servers
+            .iter()
+            .map(|s| (port_start..=port_end).map(|p| ping::ping_server((s, p))).collect::<Vec<_>>())
+            .flatten()
+            .collect::<Vec<_>>();
+
+        futures::future::join_all(async_servers).await;
 
         println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
         if !config.rescanner.repeat {
@@ -79,18 +71,4 @@ async fn run(config: Config) {
             std::process::exit(0);
         }
     }
-}
-
-async fn spawn_task(address: String, port: u16, conn: PoolConnection<Postgres>) {
-    task::spawn(async move {
-        if let Ok(server) = ping_server(address.as_str(), port).await {
-            if let Ok(response) = parse_response(server.as_str()) {
-                // Update server in database
-                match update_server(response, address.as_str(), conn).await {
-                    Ok(_) => (),
-                    Err(e) => println!("{RED}{e}{RESET}")
-                }
-            }
-        }
-    });
 }

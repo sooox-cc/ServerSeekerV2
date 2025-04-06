@@ -4,14 +4,15 @@ use std::str::FromStr;
 #[derive(Debug)]
 pub struct Server {
     pub address: String,
+    pub port: i32,
     pub version: Option<String>,
-    pub protocol: Option<i64>,
+    pub protocol: Option<i32>,
     pub icon: Option<String>,
     pub motd: Option<String>,
     pub prevents_reports: Option<bool>,
     pub enforces_secure_chat: Option<bool>,
-    pub online_players: Option<i64>,
-    pub max_players: Option<i64>,
+    pub online_players: Option<i32>,
+    pub max_players: Option<i32>,
     pub mods: Vec<Mod>,
     pub players: Vec<Player>,
 }
@@ -35,9 +36,9 @@ pub fn parse_response(response: String, address: String) -> anyhow::Result<Serve
     let json = Value::from_str(response.as_str())?;
 
     let mut version: Option<String> = None;
-    let mut protocol: Option<i64> = None;
-    let mut online_players: Option<i64> = None;
-    let mut max_players: Option<i64> = None;
+    let mut protocol: Option<i32> = None;
+    let mut online_players: Option<i32> = None;
+    let mut max_players: Option<i32> = None;
     let mut players: Vec<Player> = vec![];
     let mut mods: Vec<Mod> = vec![];
 
@@ -60,18 +61,18 @@ pub fn parse_response(response: String, address: String) -> anyhow::Result<Serve
         }
 
         if let Some(proto) = value["protocol"].as_i64() {
-            protocol = Some(proto);
+            protocol = Some(proto as i32);
         }
     }
 
     // Players object
     if let Some(value) = json.get("players") {
         if let Some(online) = value["online"].as_i64() {
-            online_players = Some(online);
+            online_players = Some(online as i32);
         }
 
         if let Some(max) = value["max"].as_i64() {
-            max_players = Some(max)
+            max_players = Some(max as i32)
         }
 
         if let Some(player_sample) = value["sample"].as_array() {
@@ -95,6 +96,7 @@ pub fn parse_response(response: String, address: String) -> anyhow::Result<Serve
 
     Ok(Server {
         address,
+        port: 25565,
         version,
         protocol,
         icon,

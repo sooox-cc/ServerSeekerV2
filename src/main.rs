@@ -7,7 +7,6 @@ mod colors;
 use colors::{GREEN, RED, RESET, YELLOW};
 use config::{load_config, Config};
 use database::{connect, fetch_servers};
-use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 #[tokio::main]
@@ -56,7 +55,6 @@ async fn main() {
             }
         };
 
-        let progress_bar = ProgressBar::new(servers.len() as u64).with_style(ProgressStyle::default_bar().progress_chars("##-"));
         let async_servers = servers
             .iter()
             .map(|s| (port_start..=port_end).map(|p| ping::ping_server((s, p))).collect::<Vec<_>>())

@@ -1,11 +1,10 @@
 use crate::colors::{RED, RESET};
 use crate::response::Server;
-use sqlx::pool::PoolConnection;
 use sqlx::{postgres::PgQueryResult, Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub async fn connect(database_url: &str) -> Pool<Postgres> {
-    match PgPool::connect(&database_url).await {
+pub async fn connect(url: &str) -> Pool<Postgres> {
+    match PgPool::connect(url).await {
         Ok(pool) => pool,
         Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
     }
@@ -17,15 +16,15 @@ pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
     sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
         .fetch_all(pool)
         .await?
-        .iter()
-        .map(|row| { row.try_get(0) })
+        .into_iter()
+        .map(|row| row.try_get(0) )
         .collect()
 }
 
-pub async fn update_server(server: Server, conn: PoolConnection<Postgres>) -> anyhow::Result<PgQueryResult> {
-    let lastseen = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+pub async fn upsert(server: Server, conn: &PgPool) -> anyhow::Result<PgQueryResult> {
+    let lastseen = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
-    let query = sqlx::query("UPDATE servers SET \
+    let query = sqlx::query!("UPDATE servers SET \
         version = $1, \
         protocol = $2, \
         icon = $3, \
@@ -35,17 +34,19 @@ pub async fn update_server(server: Server, conn: PoolConnection<Postgres>) -> an
         lastseen = $7, \
         onlineplayers = $8, \
         maxplayers = $9 \
-        WHERE address = $10")
-        .bind(&server.version)
-        .bind(server.protocol)
-        .bind(server.icon)
-        .bind(server.motd)
-        .bind(server.prevents_reports)
-        .bind(server.enforces_secure_chat)
-        .bind(lastseen)
-        .bind(server.online_players)
-        .bind(server.max_players)
-        .bind(server.address);
+        WHERE address = $10 \
+        AND port = $11", 
+        server.version, 
+        server.protocol, 
+        server.icon,
+        server.motd,
+        server.prevents_reports,
+        server.enforces_secure_chat,
+        lastseen,
+        server.online_players,
+        server.max_players,
+        server.address,
+        server.port);
 
-    Ok(query.execute(&mut conn.detach()).await?)
+    Ok(query.execute(conn).await?)
 }

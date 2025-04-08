@@ -40,8 +40,8 @@ pub fn parse_response(response: String, host: (&str, u16)) -> anyhow::Result<Ser
     let mut protocol: Option<i32> = None;
     let mut online_players: Option<i32> = None;
     let mut max_players: Option<i32> = None;
-    let mut players: Vec<Player> = vec![];
-    let mut mods: Vec<Mod> = vec![];
+    let mut players = vec![];
+    let mut mods = vec![];
 
     let icon = json["icon"].as_str().map(String::from);
     let prevents_reports = json["preventsChatReports"].as_bool();
@@ -51,8 +51,8 @@ pub fn parse_response(response: String, host: (&str, u16)) -> anyhow::Result<Ser
     if let Some(value) = json.get("version") {
         version = value["name"].as_str().map(String::from);
 
-        if let Some(value) = value["protocol"].as_i64() {
-            protocol = Some(value as i32)
+        if let Some(p)  = value["protocol"].as_i64() {
+            protocol = Some(p as i32)
         }
     }
 

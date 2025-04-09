@@ -10,6 +10,15 @@ serde_json = "1.0.138"
 toml = "0.8.19"
 tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
 sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio"] }
-indicatif = "0.17.11"
+indicatif = { version = "0.17.11", features = ["rayon"] }
 anyhow = "1.0.97"
 futures = "0.3.31"
+rayon = "1.10.0"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

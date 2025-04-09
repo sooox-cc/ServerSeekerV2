@@ -1,7 +1,9 @@
 use crate::response::{parse_response, Server};
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+use indicatif::ProgressBar;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -16,7 +18,7 @@ const PAYLOAD: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<Server> {
+pub async fn ping_server(host: (&str, u16), bar: Arc<ProgressBar>) -> anyhow::Result<Server> {
     let address = format!("{}:{}", host.0, host.1);
     let socket = SocketAddr::from_str(address.as_str())?;
 
@@ -43,7 +45,9 @@ pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<Server> {
     }
 
     let response = String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string();
-    parse_response(response, host)
+    let result = parse_response(response, host);
+    bar.inc(1);
+    result
 }
 
 fn decode(bytes: &[u8]) -> (usize, u8) {

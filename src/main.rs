@@ -1,13 +1,19 @@
+use indicatif::ParallelProgressIterator;
 mod database;
 mod config;
 mod ping;
 mod response;
 mod colors;
 
+use std::error::Error;
+use std::future::Future;
+use std::sync::Arc;
 use colors::{GREEN, RED, RESET, YELLOW};
 use config::{load_config, Config};
 use database::{connect, fetch_servers};
 use std::time::Duration;
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
+use rayon::prelude::*;
 
 #[tokio::main]
 async fn main() {
@@ -55,13 +61,16 @@ async fn main() {
             }
         };
 
-        let async_servers = servers
-            .iter()
-            .map(|s| (port_start..=port_end).map(|p| ping::ping_server((s, p))).collect::<Vec<_>>())
+        let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}").unwrap().progress_chars("##-");
+        let progress_bar = Arc::new(ProgressBar::new(servers.len() as u64).with_style(style));
+
+        let servers = servers
+            .par_iter()
+            .map(|s| (port_start..=port_end).map(|p| ping::ping_server((s, p), progress_bar.clone())).collect::<Vec<_>>())
             .flatten()
             .collect::<Vec<_>>();
 
-        futures::future::join_all(async_servers).await;
+        futures::future::join_all(servers).await;
 
         println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
         if !config.rescanner.repeat {

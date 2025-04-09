@@ -1,8 +1,7 @@
 use crate::colors::{RED, RESET};
 use crate::response::Server;
-use sqlx::{postgres::PgQueryResult, Error, PgPool, Pool, Postgres, Row};
+use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use futures::future;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
     match PgPool::connect(url).await {
@@ -14,7 +13,7 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 // TODO! Return a stream of results instead of a Vec for performance
 pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
     // Sort results by oldest
-    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
+    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 2000")
         .fetch_all(pool)
         .await?
         .into_iter()

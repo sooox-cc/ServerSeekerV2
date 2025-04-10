@@ -29,22 +29,22 @@ pub async fn ping_server(host: (&str, u16), bar: Arc<ProgressBar>) -> anyhow::Re
     // Send payload
     stream.write(&PAYLOAD).await?;
     let mut total_read = stream.read(&mut buffer).await?;
-
+    
     // Decode
-    let decoded_bytes = decode(&buffer);
-    let bytes_needed = decoded_bytes.0 + decoded_bytes.1 as usize;
+    let (varint, length) = decode(&buffer);
+    let bytes_needed = varint + length as usize;
     let mut output = vec![];
     output.extend_from_slice(&buffer[..total_read]);
-    let json = decode(&(buffer[(decoded_bytes.1+1).into()..]));
-
+    let json = decode(&(buffer[(length + 1).into()..]));
+    
     // Read everything
     while total_read < bytes_needed {
         let read = stream.read(&mut buffer).await?;
         output.extend_from_slice(&buffer[..read]);
         total_read += read;
     }
-
-    let response = String::from_utf8_lossy(&output[(decoded_bytes.1 + 1 + json.1).into()..]).to_string();
+    
+    let response = String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string();
     let result = parse_response(response, host);
     bar.inc(1);
     result

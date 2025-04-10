@@ -31,8 +31,6 @@ pub struct Mod {
     pub mod_name: Option<String>,
 }
 
-// I no longer care about trying to make the parsing code good,
-// there is no proper standard for how servers should respond so this is what you get
 pub fn parse_response(response: String, host: (&str, u16)) -> anyhow::Result<Server> {
     let json = Value::from_str(response.as_str())?;
 

@@ -16,7 +16,7 @@ futures = "0.3.31"
 rayon = "1.10.0"
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+rustflags = ["-C", "link-arg=-fuse-ld=mold", "target-cpu=native"]
 
 [profile.release]
 strip = true

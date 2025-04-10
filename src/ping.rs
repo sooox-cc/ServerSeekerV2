@@ -1,9 +1,9 @@
 use crate::response::{parse_response, Server};
+use indicatif::ProgressBar;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use indicatif::ProgressBar;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -24,7 +24,7 @@ pub async fn ping_server(host: (&str, u16), bar: Arc<ProgressBar>) -> anyhow::Re
 
     // Connect and create buffer
     let mut stream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
-    let mut buffer = [0; 2048];
+    let mut buffer = [0; 1024];
 
     // Send payload
     stream.write(&PAYLOAD).await?;

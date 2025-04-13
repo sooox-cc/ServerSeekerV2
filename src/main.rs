@@ -11,6 +11,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
+use sqlx::{Pool, Postgres};
 
 #[tokio::main]
 async fn main() {
@@ -62,8 +63,8 @@ async fn main() {
         let progress_bar = Arc::new(ProgressBar::new(servers.len() as u64).with_style(style));
 
         let servers = servers
-            .par_iter()
-            .map(|s| (port_start..=port_end).map(|p| ping::ping_server((s, p), progress_bar.clone())).collect::<Vec<_>>())
+            .iter()
+            .map(|ip| (port_start..=port_end).map(|port| run((ip, port), pool.clone(), progress_bar.clone())).collect::<Vec<_>>())
             .flatten()
             .collect::<Vec<_>>();
 
@@ -75,4 +76,23 @@ async fn main() {
             std::process::exit(0);
         }
     }
+}
+
+async fn run(host: (&str, u16), pool: Pool<Postgres>, bar: Arc<ProgressBar>) {
+    match ping::ping_server(host).await {
+        Ok(results) => {
+            match response::parse_response(results, &host) {
+                Ok(response) => {
+                    match database::update(response, &pool).await {
+                        Ok(_) => (),
+                        Err(e) => eprintln!("{RED}[WARN] Failed to update server in database! {e}{RESET}"),
+                    }
+                }
+                Err(e) => eprintln!("{RED}[WARN] Failed to parse server response! {e}{RESET}"),
+            }
+        }
+        Err(e) => eprintln!("{RED}[WARN] Failed to ping server! {e}{RESET}"),
+    }
+    
+    bar.inc(1);
 }

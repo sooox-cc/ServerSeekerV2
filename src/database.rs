@@ -11,10 +11,10 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
-pub async fn fetch_servers(pool: &PgPool) -> Result<Vec<String>, Error> {
+pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> {
     // Sort results by oldest
     sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
-        .fetch_all(pool)
+        .fetch_all(&*pool)
         .await?
         .into_iter()
         .map(|row| row.try_get(0) )

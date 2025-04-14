@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::str::FromStr;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Server {
     pub address: String,
@@ -18,6 +19,7 @@ pub struct Server {
     pub players: Vec<Player>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Player {
     pub username: Option<String>,
@@ -25,13 +27,14 @@ pub struct Player {
     pub uuid: Option<String>
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Mod {
     pub mod_id: Option<String>,
     pub mod_name: Option<String>,
 }
 
-pub fn parse_response(response: String, host: &(&str, u16)) -> anyhow::Result<Server> {
+pub fn parse_response(response: String, host: &(String, u16)) -> anyhow::Result<Server> {
     let json = Value::from_str(response.as_str())?;
 
     let mut version: Option<String> = None;

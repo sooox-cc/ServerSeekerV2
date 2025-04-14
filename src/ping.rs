@@ -15,7 +15,7 @@ const PAYLOAD: [u8; 9] = [
     0, // ID
 ];
 
-pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<String> {
+pub async fn ping_server(host: &(String, u16)) -> anyhow::Result<String> {
     let address = format!("{}:{}", host.0, host.1);
     let socket = SocketAddr::from_str(address.as_str())?;
 
@@ -40,6 +40,9 @@ pub async fn ping_server(host: (&str, u16)) -> anyhow::Result<String> {
         output.extend_from_slice(&buffer[..read]);
         total_read += read;
     }
+
+    // Explicitly shutdown stream
+    stream.shutdown().await?;
     
     Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())
 }

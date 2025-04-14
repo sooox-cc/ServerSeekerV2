@@ -8,10 +8,17 @@ use colors::{GREEN, RED, RESET, YELLOW};
 use config::{load_config, Config};
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
-use rayon::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 use sqlx::{Pool, Postgres};
+use tokio::sync::Semaphore;
+
+#[derive(Clone)]
+struct State {
+    pool: Pool<Postgres>,
+    semaphore: Arc<Semaphore>,
+    progress_bar: Arc<ProgressBar>
+}
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +53,9 @@ async fn main() {
              port_end,
              total_ports);
 
-    loop {
+    let semaphore = Arc::new(Semaphore::new(3000));
+    
+    // loop {
         let servers = match fetch_servers(&pool).await {
             Ok(servers) => {
                 println!("{GREEN}[INFO] Found {} servers to rescan!{RESET}", servers.len());
@@ -55,16 +64,23 @@ async fn main() {
             Err(_) => {
                 println!("{RED}[ERROR] Failed to fetch servers! Waiting 10 seconds and retrying...{RESET}");
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                continue;
+                // continue;
+                return;
             }
         };
 
         let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}").unwrap().progress_chars("=>-");
         let progress_bar = Arc::new(ProgressBar::new(servers.len() as u64).with_style(style));
 
+        let state = Arc::new(State {
+            pool: pool.clone(),
+            semaphore: semaphore.clone(),
+            progress_bar: progress_bar.clone(),
+        });
+
         let servers = servers
             .iter()
-            .map(|ip| (port_start..=port_end).map(|port| run((ip, port), pool.clone(), progress_bar.clone())).collect::<Vec<_>>())
+            .map(|ip| (port_start..=port_end).map(|port| run((ip.to_owned(), port), state.clone())).collect::<Vec<_>>())
             .flatten()
             .collect::<Vec<_>>();
 
@@ -75,24 +91,25 @@ async fn main() {
             println!("{GREEN}[INFO] Exiting...{RESET}");
             std::process::exit(0);
         }
-    }
+    // }
 }
 
-async fn run(host: (&str, u16), pool: Pool<Postgres>, bar: Arc<ProgressBar>) {
-    match ping::ping_server(host).await {
+async fn run(host: (String, u16), state: Arc<State>) {
+    let binding = state.semaphore.clone();
+    let permit = binding.acquire().await.unwrap();
+
+    match ping::ping_server(&host).await {
         Ok(results) => {
             match response::parse_response(results, &host) {
                 Ok(response) => {
-                    match database::update(response, &pool).await {
-                        Ok(_) => (),
+                    match database::update(response, &state.pool).await {
+                        Ok(_) => state.progress_bar.inc(1),
                         Err(e) => eprintln!("{RED}[WARN] Failed to update server in database! {e}{RESET}"),
                     }
                 }
-                Err(e) => eprintln!("{RED}[WARN] Failed to parse server response! {e}{RESET}"),
+                _ => ()
             }
         }
-        Err(e) => eprintln!("{RED}[WARN] Failed to ping server! {e}{RESET}"),
+        _ => ()
     }
-    
-    bar.inc(1);
 }

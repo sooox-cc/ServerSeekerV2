@@ -4,8 +4,9 @@ mod ping;
 mod response;
 mod colors;
 
+use std::rc::Rc;
 use colors::{GREEN, RED, RESET, YELLOW};
-use config::{load_config, Config};
+use config::load_config;
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
@@ -15,17 +16,17 @@ use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 struct State {
-    pool: Pool<Postgres>,
-    semaphore: Arc<Semaphore>,
-    progress_bar: Arc<ProgressBar>
+    pool: Rc<Pool<Postgres>>,
+    semaphore: Rc<Semaphore>,
+    progress_bar: Rc<ProgressBar>
 }
 
 #[tokio::main]
 async fn main() {
     // Handle config file
-    let config_file: String = std::env::args().nth(1).unwrap_or("config.toml".to_string());
+    let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
     println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
-    let config: Config = load_config(config_file);
+    let config = load_config(config_file);
 
     // Create database URL
     let database_url = format!("postgresql://{}:{}@{}:{}/{}",
@@ -47,31 +48,33 @@ async fn main() {
         println!("{YELLOW}[WARN] Repeat is not enabled in config file! Will only scan once!{RESET}");
     }
 
-    let pool = connect(database_url.as_str()).await;
     println!("{GREEN}[INFO] Scanning port range {} - {} ({} port(s) per host){RESET}",
              port_start,
              port_end,
              total_ports);
 
-    let semaphore = Arc::new(Semaphore::new(3000));
+    let semaphore = Rc::new(Semaphore::new(3000));
     
     loop {
+        let pool = Rc::new(connect(database_url.as_str()).await);
+
         let servers = match fetch_servers(&pool).await {
             Ok(servers) => {
                 println!("{GREEN}[INFO] Found {} servers to rescan!{RESET}", servers.len());
                 servers
             },
             Err(_) => {
-                println!("{RED}[ERROR] Failed to fetch servers! Waiting 10 seconds and retrying...{RESET}");
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                println!("{RED}[ERROR] Failed to fetch servers! Waiting 30 seconds and retrying...{RESET}");
+                tokio::time::sleep(Duration::from_secs(30)).await;
                 continue;
             }
         };
 
         let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}").unwrap().progress_chars("=>-");
-        let progress_bar = Arc::new(ProgressBar::new(servers.len() as u64).with_style(style));
+        let progress_bar = Rc::new(ProgressBar::new(servers.len() as u64).with_style(style));
 
-        let state = Arc::new(State {
+        let state = Rc::new(State {
+            // Pool isn't used anywhere else except for inside the futures so it's safe to move the value
             pool: pool.clone(),
             semaphore: semaphore.clone(),
             progress_bar: progress_bar.clone(),
@@ -79,7 +82,7 @@ async fn main() {
 
         let servers = servers
             .iter()
-            .map(|ip| (port_start..=port_end).map(|port| run((ip.to_owned(), port), state.clone())).collect::<Vec<_>>())
+            .map(|ip| (port_start..=port_end).map(|port| run((ip.to_owned(), port), Rc::clone(&state))).collect::<Vec<_>>())
             .flatten()
             .collect::<Vec<_>>();
 
@@ -99,9 +102,8 @@ async fn main() {
     }
 }
 
-async fn run(host: (String, u16), state: Arc<State>) {
-    let binding = state.semaphore.clone();
-    let permit = binding.acquire().await.unwrap();
+async fn run(host: (String, u16), state: Rc<State>) {
+    let _permit = state.semaphore.acquire().await.unwrap();
 
     match ping::ping_server(&host).await {
         Ok(results) => {

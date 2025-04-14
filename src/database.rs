@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use crate::colors::{RED, RESET};
 use crate::response::Server;
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
@@ -21,7 +22,7 @@ pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> 
         .collect()
 }
 
-pub async fn update(server: Server, conn: &PgPool) -> anyhow::Result<()> {
+pub async fn update(server: Server, conn: &Rc<PgPool>) -> anyhow::Result<()> {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
     let mut transaction = conn.begin().await?;
     let address: &str = server.address.as_str();

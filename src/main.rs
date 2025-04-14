@@ -55,7 +55,7 @@ async fn main() {
 
     let semaphore = Arc::new(Semaphore::new(3000));
     
-    // loop {
+    loop {
         let servers = match fetch_servers(&pool).await {
             Ok(servers) => {
                 println!("{GREEN}[INFO] Found {} servers to rescan!{RESET}", servers.len());
@@ -64,8 +64,7 @@ async fn main() {
             Err(_) => {
                 println!("{RED}[ERROR] Failed to fetch servers! Waiting 10 seconds and retrying...{RESET}");
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                // continue;
-                return;
+                continue;
             }
         };
 
@@ -87,11 +86,17 @@ async fn main() {
         futures::future::join_all(servers).await;
 
         println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
+        
         if !config.rescanner.repeat {
             println!("{GREEN}[INFO] Exiting...{RESET}");
             std::process::exit(0);
         }
-    // }
+
+        if config.rescanner.rescan_delay > 0 {
+            println!("{GREEN}[INFO] Waiting {} seconds before starting another scan...{RESET}", config.rescanner.rescan_delay);
+            tokio::time::sleep(Duration::from_secs(config.rescanner.rescan_delay)).await;
+        }
+    }
 }
 
 async fn run(host: (String, u16), state: Arc<State>) {
@@ -103,7 +108,7 @@ async fn run(host: (String, u16), state: Arc<State>) {
             match response::parse_response(results, &host) {
                 Ok(response) => {
                     match database::update(response, &state.pool).await {
-                        Ok(_) => state.progress_bar.inc(1),
+                        Ok(_) => (),
                         Err(e) => eprintln!("{RED}[WARN] Failed to update server in database! {e}{RESET}"),
                     }
                 }
@@ -112,4 +117,6 @@ async fn run(host: (String, u16), state: Arc<State>) {
         }
         _ => ()
     }
+
+    state.progress_bar.inc(1);
 }

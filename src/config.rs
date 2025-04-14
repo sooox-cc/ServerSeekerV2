@@ -21,7 +21,7 @@ pub struct Database {
 #[derive(Deserialize)]
 pub struct Rescanner {
     pub repeat: bool,
-    pub rescan_delay: u16,
+    pub rescan_delay: u64,
     pub port_range_start: u16,
     pub port_range_end: u16,
 }

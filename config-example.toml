@@ -1,7 +1,7 @@
 [rescanner]
 # Repeat after a scan is complete?
 repeat = true
-# How long to wait before starting another scan
+# How long to wait before starting another scan in seconds
 rescan_delay = 60
 # Start of port range
 port_range_start = 25565

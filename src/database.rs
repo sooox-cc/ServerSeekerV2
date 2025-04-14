@@ -12,8 +12,8 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 
 // TODO! Return a stream of results instead of a Vec for performance
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> {
-    // Sort results by oldest
-    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100")
+    // Sort results by oldest servers first
+    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
         .fetch_all(&*pool)
         .await?
         .into_iter()

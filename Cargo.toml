@@ -20,5 +20,5 @@ linker = "/usr/bin/clang"
 
 [profile.release]
 strip = true
-lto = true
+lto = "fat"
 codegen-units = 1

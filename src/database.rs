@@ -1,34 +1,35 @@
-use std::rc::Rc;
 use crate::colors::{RED, RESET};
 use crate::response::Server;
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
-    match PgPool::connect(url).await {
-        Ok(pool) => pool,
-        Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
-    }
+	match PgPool::connect(url).await {
+		Ok(pool) => pool,
+		Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
+	}
 }
 
 // TODO! Return a stream of results instead of a Vec for performance
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> {
-    // Sort results by oldest servers first
-    sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
-        .fetch_all(&*pool)
-        .await?
-        .into_iter()
-        .map(|row| row.try_get(0) )
-        .collect()
+	// Sort results by oldest servers first
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
+		.fetch_all(&*pool)
+		.await?
+		.into_iter()
+		.map(|row| row.try_get(0))
+		.collect()
 }
 
 pub async fn update(server: Server, conn: &Rc<PgPool>) -> anyhow::Result<()> {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
-    let mut transaction = conn.begin().await?;
-    let address: &str = server.address.as_str();
+	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
+	let mut transaction = conn.begin().await?;
+	let address: &str = server.address.as_str();
 
-    // Update server
-    sqlx::query("UPDATE servers SET
+	// Update server
+	sqlx::query(
+		"UPDATE servers SET
         version = $1,
         protocol = $2,
         icon = $3,
@@ -39,24 +40,25 @@ pub async fn update(server: Server, conn: &Rc<PgPool>) -> anyhow::Result<()> {
         onlineplayers = $8,
         maxplayers = $9
         WHERE address = $10
-        AND port = $11")
-        .bind(server.version)
-        .bind(server.protocol,)
-        .bind(server.icon)
-        .bind(server.motd)
-        .bind(server.prevents_reports)
-        .bind(server.enforces_secure_chat)
-        .bind(timestamp)
-        .bind(server.online_players)
-        .bind(server.max_players)
-        .bind(address)
-        .bind(server.port)
-        .execute(&mut *transaction)
-        .await?;
+        AND port = $11",
+	)
+	.bind(server.version)
+	.bind(server.protocol)
+	.bind(server.icon)
+	.bind(server.motd)
+	.bind(server.prevents_reports)
+	.bind(server.enforces_secure_chat)
+	.bind(timestamp)
+	.bind(server.online_players)
+	.bind(server.max_players)
+	.bind(address)
+	.bind(server.port)
+	.execute(&mut *transaction)
+	.await?;
 
-    // Upsert players
-    for player in server.players {
-        sqlx::query("INSERT INTO playerhistory (address, port, playeruuid, playername, firstseen, lastseen) VALUES ($1, $2, $3, $4, $5, $6)
+	// Upsert players
+	for player in server.players {
+		sqlx::query("INSERT INTO playerhistory (address, port, playeruuid, playername, firstseen, lastseen) VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (address, port, playeruuid) DO UPDATE SET
                     lastseen = EXCLUDED.lastseen,
                     playername = EXCLUDED.playername")
@@ -68,11 +70,11 @@ pub async fn update(server: Server, conn: &Rc<PgPool>) -> anyhow::Result<()> {
             .bind(timestamp)
             .execute(&mut *transaction)
             .await?;
-    };
+	}
 
-    // Update mods
-    for mods in server.mods {
-        sqlx::query("INSERT INTO mods (address, port, modid, modmarker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, modid) DO NOTHING")
+	// Update mods
+	for mods in server.mods {
+		sqlx::query("INSERT INTO mods (address, port, modid, modmarker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, modid) DO NOTHING")
             .bind(address)
             .bind(server.port)
             .bind(mods.mod_id)
@@ -81,7 +83,7 @@ pub async fn update(server: Server, conn: &Rc<PgPool>) -> anyhow::Result<()> {
             .bind(timestamp)
             .execute(&mut *transaction)
             .await?;
-    };
-    
-    Ok(transaction.commit().await?)
+	}
+
+	Ok(transaction.commit().await?)
 }

@@ -9,7 +9,6 @@ use colors::{GREEN, RED, RESET, YELLOW};
 use config::load_config;
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::Arc;
 use std::time::Duration;
 use sqlx::{Pool, Postgres};
 use tokio::sync::Semaphore;
@@ -23,7 +22,6 @@ struct State {
 
 #[tokio::main]
 async fn main() {
-    // Handle config file
     let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
     println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
     let config = load_config(config_file);
@@ -86,8 +84,16 @@ async fn main() {
             .flatten()
             .collect::<Vec<_>>();
 
-        futures::future::join_all(servers).await;
+        let results = futures::future::join_all(servers).await;
 
+        let errors = results.into_iter()
+            .filter_map(Result::err)
+            .collect::<Vec<_>>();
+        
+        if !errors.is_empty() {
+            println!("{YELLOW}[INFO] Scan returned {} errors!{RESET}", errors.len());
+        }
+        
         println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
         
         if !config.rescanner.repeat {
@@ -102,8 +108,8 @@ async fn main() {
     }
 }
 
-async fn run(host: (String, u16), state: Rc<State>) {
-    let _permit = state.semaphore.acquire().await.unwrap();
+async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
+    let permit = state.semaphore.acquire().await;
 
     match ping::ping_server(&host).await {
         Ok(results) => {
@@ -111,14 +117,20 @@ async fn run(host: (String, u16), state: Rc<State>) {
                 Ok(response) => {
                     match database::update(response, &state.pool).await {
                         Ok(_) => (),
-                        Err(e) => eprintln!("{RED}[WARN] Failed to update server in database! {e}{RESET}"),
+                        _ => return Err(ErrorType::DatabaseError)
                     }
                 }
-                _ => ()
+                _ => return Err(ErrorType::ParsingError)
             }
         }
-        _ => ()
+        _ => return Err(ErrorType::ConnectionRefused)
     }
 
-    state.progress_bar.inc(1);
+    Ok(state.progress_bar.inc(1))
+}
+
+enum ErrorType {
+    ConnectionRefused,
+    ParsingError,
+    DatabaseError
 }

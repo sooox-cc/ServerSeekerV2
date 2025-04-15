@@ -1,5 +1,6 @@
 use crate::colors::{RED, RESET};
 use serde::Deserialize;
+use std::cmp::max;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 
@@ -47,11 +48,7 @@ impl Rescanner {
 			std::process::exit(1);
 		}
 
-		if end - start == 0 {
-			return 1;
-		}
-
-		end - start
+		max(1, end - start)
 	}
 }
 

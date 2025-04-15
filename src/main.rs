@@ -90,12 +90,11 @@ async fn main() {
 
 		let servers = servers
 			.iter()
-			.map(|ip| {
+			.flat_map(|ip| {
 				(port_start..=port_end)
 					.map(|port| run((ip.to_owned(), port), Rc::clone(&state)))
 					.collect::<Vec<_>>()
 			})
-			.flatten()
 			.collect::<Vec<_>>();
 
 		let results = futures::future::join_all(servers).await;
@@ -130,7 +129,7 @@ async fn main() {
 }
 
 async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
-	let permit = state.semaphore.acquire().await;
+	let _permit = state.semaphore.acquire().await;
 
 	match ping::ping_server(&host).await {
 		Ok(results) => match response::parse_response(results, &host) {
@@ -143,7 +142,8 @@ async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
 		_ => return Err(ErrorType::ConnectionRefused),
 	}
 
-	Ok(state.progress_bar.inc(1))
+	state.progress_bar.inc(1);
+	Ok(())
 }
 
 enum ErrorType {

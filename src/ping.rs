@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -25,7 +25,7 @@ pub async fn ping_server(host: &(String, u16)) -> anyhow::Result<String> {
 	let mut buffer = [0; 1024];
 
 	// Send payload
-	stream.write(&PAYLOAD).await?;
+	stream.write_all(&PAYLOAD).await?;
 	let mut total_read = stream.read(&mut buffer).await?;
 
 	// Decode

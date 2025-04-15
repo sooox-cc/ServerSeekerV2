@@ -124,27 +124,25 @@ async fn main() {
 	}
 }
 
-static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
-async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
-	let _permit = PING_PERMITS.acquire().await.unwrap();
-
-	match ping::ping_server(&host).await {
-		Ok(results) => match response::parse_response(results, &host) {
-			Ok(response) => match database::update(response, &state.pool).await {
-				Ok(_) => {
-					state.progress_bar.inc(1);
-					Ok(())
-				}
-				_ => Err(ErrorType::DatabaseError),
-			},
-			_ => Err(ErrorType::ParsingError),
-		},
-		_ => Err(ErrorType::ConnectionRefused),
-	}
+#[derive(Debug, Error)]
+enum RunError {
+	#[error("error while pinging server")]
+	PingServer(#[from] ping::PingServerError),
+	#[error("error while parsing response")]
+	ParseResponse(#[from] serde_json::Error),
+	#[error("error while updating database")]
+	DatabaseUpdate(#[from] sqlx::Error),
 }
 
-enum ErrorType {
-	ConnectionRefused,
-	ParsingError,
-	DatabaseError,
+static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
+
+async fn run(host: (String, u16), state: Rc<State>) -> Result<(), RunError> {
+	let _permit = PING_PERMITS.acquire().await.unwrap();
+
+	let results = ping::ping_server(&host).await?;
+	let response = response::parse_response(results, &host)?;
+	database::update(response, &state.pool).await?;
+	state.progress_bar.inc(1);
+
+	Ok(())
 }

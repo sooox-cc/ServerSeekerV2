@@ -1,7 +1,7 @@
-use anyhow::Result;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -16,7 +16,17 @@ const PAYLOAD: [u8; 9] = [
 	0, // ID
 ];
 
-pub async fn ping_server(host: &(String, u16)) -> Result<String> {
+#[derive(Debug, Error)]
+pub enum PingServerError {
+	#[error("failed to parse address")]
+	AddressParseError(#[from] std::net::AddrParseError),
+	#[error("i/o error")]
+	IOError(#[from] std::io::Error),
+	#[error("connection timed out")]
+	TimedOut(#[from] tokio::time::error::Elapsed),
+}
+
+pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
 	let address = format!("{}:{}", host.0, host.1);
 	let socket = SocketAddr::from_str(address.as_str())?;
 

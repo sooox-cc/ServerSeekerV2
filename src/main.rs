@@ -11,7 +11,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::{sync::Semaphore, task::JoinSet};
 
 struct State {
 	pool: Pool<Postgres>,
@@ -83,21 +83,17 @@ async fn main() {
 			progress_bar,
 		});
 
-		let servers = servers
-			.iter()
-			.flat_map(|ip| {
-				(port_start..=port_end)
-					.map(|port| tokio::spawn(run((ip.to_owned(), port), state.clone())))
-					.collect::<Vec<_>>()
-			})
-			.collect::<Vec<_>>();
+		let mut ping_set = JoinSet::new();
 
-		let results = futures::future::join_all(servers).await;
+		for ip in servers {
+			for port in port_start..=port_end {
+				ping_set.spawn(run((ip.to_owned(), port), state.clone()));
+			}
+		}
 
-		let errors = results
-			.into_iter()
-			.filter_map(Result::err)
-			.collect::<Vec<_>>();
+		let results = ping_set.join_all().await;
+
+		let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
 
 		if !errors.is_empty() {
 			println!(

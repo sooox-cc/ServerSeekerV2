@@ -9,8 +9,7 @@ use config::load_config;
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
-use std::rc::Rc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
@@ -78,7 +77,7 @@ async fn main() {
 				.progress_chars("=>-");
 		let progress_bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
-		let state = Rc::new(State {
+		let state = Arc::new(State {
 			// Pool isn't used anywhere else except for inside the futures so it's safe to move the value
 			pool,
 			progress_bar,
@@ -88,7 +87,7 @@ async fn main() {
 			.iter()
 			.flat_map(|ip| {
 				(port_start..=port_end)
-					.map(|port| run((ip.to_owned(), port), Rc::clone(&state)))
+					.map(|port| tokio::spawn(run((ip.to_owned(), port), state.clone())))
 					.collect::<Vec<_>>()
 			})
 			.collect::<Vec<_>>();
@@ -136,7 +135,7 @@ enum RunError {
 
 static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
 
-async fn run(host: (String, u16), state: Rc<State>) -> Result<(), RunError> {
+async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
 	let _permit = PING_PERMITS.acquire().await.unwrap();
 
 	let results = ping::ping_server(&host).await?;

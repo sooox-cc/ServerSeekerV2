@@ -13,11 +13,10 @@ use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
-#[derive(Clone)]
 struct State {
-	pool: Rc<Pool<Postgres>>,
+	pool: Pool<Postgres>,
 	semaphore: Rc<Semaphore>,
-	progress_bar: Rc<ProgressBar>,
+	progress_bar: ProgressBar,
 }
 
 #[tokio::main]
@@ -55,10 +54,10 @@ async fn main() {
 		port_start, port_end, total_ports
 	);
 
-	let semaphore = Rc::new(Semaphore::new(3000));
+	let semaphore = Rc::new(Semaphore::new(1000));
 
 	loop {
-		let pool = Rc::new(connect(database_url.as_str()).await);
+		let pool = connect(database_url.as_str()).await;
 
 		let servers = match fetch_servers(&pool).await {
 			Ok(servers) => {
@@ -79,13 +78,13 @@ async fn main() {
 			ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
 				.unwrap()
 				.progress_chars("=>-");
-		let progress_bar = Rc::new(ProgressBar::new(servers.len() as u64).with_style(style));
+		let progress_bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
 		let state = Rc::new(State {
 			// Pool isn't used anywhere else except for inside the futures so it's safe to move the value
-			pool: pool.clone(),
-			semaphore: semaphore.clone(),
-			progress_bar: progress_bar.clone(),
+			pool,
+			semaphore: Rc::clone(&semaphore),
+			progress_bar,
 		});
 
 		let servers = servers

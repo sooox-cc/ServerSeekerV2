@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde_json::Value;
 use std::str::FromStr;
 
@@ -34,7 +35,7 @@ pub struct Mod {
 	pub mod_name: Option<String>,
 }
 
-pub fn parse_response(response: String, host: &(String, u16)) -> anyhow::Result<Server> {
+pub fn parse_response(response: String, host: &(String, u16)) -> Result<Server> {
 	let json = Value::from_str(response.as_str())?;
 
 	let mut version: Option<String> = None;

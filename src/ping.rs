@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -15,7 +16,7 @@ const PAYLOAD: [u8; 9] = [
 	0, // ID
 ];
 
-pub async fn ping_server(host: &(String, u16)) -> anyhow::Result<String> {
+pub async fn ping_server(host: &(String, u16)) -> Result<String> {
 	let address = format!("{}:{}", host.0, host.1);
 	let socket = SocketAddr::from_str(address.as_str())?;
 

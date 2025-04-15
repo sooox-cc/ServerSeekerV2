@@ -11,11 +11,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::rc::Rc;
 use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::Semaphore;
 
 struct State {
 	pool: Pool<Postgres>,
-	semaphore: Rc<Semaphore>,
 	progress_bar: ProgressBar,
 }
 
@@ -54,8 +54,6 @@ async fn main() {
 		port_start, port_end, total_ports
 	);
 
-	let semaphore = Rc::new(Semaphore::new(1000));
-
 	loop {
 		let pool = connect(database_url.as_str()).await;
 
@@ -83,7 +81,6 @@ async fn main() {
 		let state = Rc::new(State {
 			// Pool isn't used anywhere else except for inside the futures so it's safe to move the value
 			pool,
-			semaphore: Rc::clone(&semaphore),
 			progress_bar,
 		});
 
@@ -127,22 +124,23 @@ async fn main() {
 	}
 }
 
+static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
 async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
-	let _permit = state.semaphore.acquire().await;
+	let _permit = PING_PERMITS.acquire().await.unwrap();
 
 	match ping::ping_server(&host).await {
 		Ok(results) => match response::parse_response(results, &host) {
 			Ok(response) => match database::update(response, &state.pool).await {
-				Ok(_) => (),
-				_ => return Err(ErrorType::DatabaseError),
+				Ok(_) => {
+					state.progress_bar.inc(1);
+					Ok(())
+				}
+				_ => Err(ErrorType::DatabaseError),
 			},
-			_ => return Err(ErrorType::ParsingError),
+			_ => Err(ErrorType::ParsingError),
 		},
-		_ => return Err(ErrorType::ConnectionRefused),
+		_ => Err(ErrorType::ConnectionRefused),
 	}
-
-	state.progress_bar.inc(1);
-	Ok(())
 }
 
 enum ErrorType {

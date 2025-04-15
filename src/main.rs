@@ -11,7 +11,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::{sync::Semaphore, task::JoinSet};
+use tokio::task::JoinSet;
 
 struct State {
 	pool: Pool<Postgres>,
@@ -129,11 +129,7 @@ enum RunError {
 	DatabaseUpdate(#[from] sqlx::Error),
 }
 
-static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
-
 async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
-	let _permit = PING_PERMITS.acquire().await.unwrap();
-
 	let results = ping::ping_server(&host).await?;
 	let response = response::parse_response(results, &host)?;
 	database::update(response, &state.pool).await?;

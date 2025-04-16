@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
@@ -30,8 +30,10 @@ pub enum PingServerError {
 static PERMITS: Semaphore = Semaphore::const_new(500);
 
 pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
-	let address = format!("{}:{}", host.0, host.1);
-	let socket = SocketAddr::from_str(address.as_str())?;
+	let socket = SocketAddr::V4(SocketAddrV4::new(
+		Ipv4Addr::from_str(host.0.as_str())?,
+		host.1,
+	));
 
 	// Wait for a permit to continue
 	let _permit = PERMITS.acquire().await.unwrap();

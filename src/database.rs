@@ -21,8 +21,11 @@ pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> 
 		.collect()
 }
 
-pub async fn update(server: Server, conn: &PgPool) -> anyhow::Result<()> {
-	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
+pub async fn update(server: Server, conn: &PgPool) -> Result<(), sqlx::Error> {
+	let timestamp = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.expect("system time is before the unix epoch")
+		.as_secs() as i32;
 	let mut transaction = conn.begin().await?;
 	let address: &str = server.address.as_str();
 
@@ -84,5 +87,5 @@ pub async fn update(server: Server, conn: &PgPool) -> anyhow::Result<()> {
             .await?;
 	}
 
-	Ok(transaction.commit().await?)
+	transaction.commit().await
 }

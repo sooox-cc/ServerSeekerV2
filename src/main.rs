@@ -9,13 +9,12 @@ use config::load_config;
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
-use std::rc::Rc;
-use std::time::Duration;
-use tokio::sync::Semaphore;
+use std::{sync::Arc, time::Duration};
+use thiserror::Error;
+use tokio::task::JoinSet;
 
 struct State {
 	pool: Pool<Postgres>,
-	semaphore: Rc<Semaphore>,
 	progress_bar: ProgressBar,
 }
 
@@ -54,8 +53,6 @@ async fn main() {
 		port_start, port_end, total_ports
 	);
 
-	let semaphore = Rc::new(Semaphore::new(1000));
-
 	loop {
 		let pool = connect(database_url.as_str()).await;
 
@@ -80,28 +77,23 @@ async fn main() {
 				.progress_chars("=>-");
 		let progress_bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
-		let state = Rc::new(State {
+		let state = Arc::new(State {
 			// Pool isn't used anywhere else except for inside the futures so it's safe to move the value
 			pool,
-			semaphore: Rc::clone(&semaphore),
 			progress_bar,
 		});
 
-		let servers = servers
-			.iter()
-			.flat_map(|ip| {
-				(port_start..=port_end)
-					.map(|port| run((ip.to_owned(), port), Rc::clone(&state)))
-					.collect::<Vec<_>>()
-			})
-			.collect::<Vec<_>>();
+		let mut ping_set = JoinSet::new();
 
-		let results = futures::future::join_all(servers).await;
+		for ip in servers {
+			for port in port_start..=port_end {
+				ping_set.spawn(run((ip.to_owned(), port), state.clone()));
+			}
+		}
 
-		let errors = results
-			.into_iter()
-			.filter_map(Result::err)
-			.collect::<Vec<_>>();
+		let results = ping_set.join_all().await;
+
+		let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
 
 		if !errors.is_empty() {
 			println!(
@@ -127,26 +119,21 @@ async fn main() {
 	}
 }
 
-async fn run(host: (String, u16), state: Rc<State>) -> Result<(), ErrorType> {
-	let _permit = state.semaphore.acquire().await;
-
-	match ping::ping_server(&host).await {
-		Ok(results) => match response::parse_response(results, &host) {
-			Ok(response) => match database::update(response, &state.pool).await {
-				Ok(_) => (),
-				_ => return Err(ErrorType::DatabaseError),
-			},
-			_ => return Err(ErrorType::ParsingError),
-		},
-		_ => return Err(ErrorType::ConnectionRefused),
-	}
-
-	state.progress_bar.inc(1);
-	Ok(())
+#[derive(Debug, Error)]
+enum RunError {
+	#[error("error while pinging server")]
+	PingServer(#[from] ping::PingServerError),
+	#[error("error while parsing response")]
+	ParseResponse(#[from] serde_json::Error),
+	#[error("error while updating database")]
+	DatabaseUpdate(#[from] sqlx::Error),
 }
 
-enum ErrorType {
-	ConnectionRefused,
-	ParsingError,
-	DatabaseError,
+async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
+	let results = ping::ping_server(&host).await?;
+	let response = response::parse_response(results, &host)?;
+	database::update(response, &state.pool).await?;
+	state.progress_bar.inc(1);
+
+	Ok(())
 }

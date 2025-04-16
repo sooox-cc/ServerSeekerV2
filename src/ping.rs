@@ -1,8 +1,10 @@
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::Semaphore;
 
 const PAYLOAD: [u8; 9] = [
 	6, // Size: Amount of bytes in the message
@@ -15,11 +17,24 @@ const PAYLOAD: [u8; 9] = [
 	0, // ID
 ];
 
-pub async fn ping_server(host: &(String, u16)) -> anyhow::Result<String> {
+#[derive(Debug, Error)]
+pub enum PingServerError {
+	#[error("failed to parse address")]
+	AddressParseError(#[from] std::net::AddrParseError),
+	#[error("i/o error")]
+	IOError(#[from] std::io::Error),
+	#[error("connection timed out")]
+	TimedOut(#[from] tokio::time::error::Elapsed),
+}
+
+static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
+
+pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
 	let address = format!("{}:{}", host.0, host.1);
 	let socket = SocketAddr::from_str(address.as_str())?;
 
 	// Connect and create buffer
+	let _permit = PING_PERMITS.acquire().await.unwrap();
 	let mut stream =
 		tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
 	let mut buffer = [0; 1024];

@@ -9,6 +9,7 @@ use config::load_config;
 use database::{connect, fetch_servers};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::task::JoinSet;
@@ -80,6 +81,10 @@ async fn main() {
 		let state = Arc::new(State { pool, progress_bar });
 
 		let mut ping_set = JoinSet::new();
+		let start = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("system time is before the unix epoch")
+			.as_secs() as i64;
 
 		for ip in servers {
 			for port in port_start..=port_end {
@@ -88,7 +93,6 @@ async fn main() {
 		}
 
 		let results = ping_set.join_all().await;
-
 		let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
 
 		if !errors.is_empty() {
@@ -98,7 +102,13 @@ async fn main() {
 			);
 		}
 
+		let end = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("system time is before the unix epoch")
+			.as_secs() as i64;
+
 		println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
+		println!("{GREEN}[INFO] Scan took {} seconds{RESET}", end - start);
 
 		if !config.rescanner.repeat {
 			println!("{GREEN}[INFO] Exiting...{RESET}");

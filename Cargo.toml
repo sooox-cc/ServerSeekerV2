@@ -1,8 +1,9 @@
 [package]
-name = "ServerSeekerV2-Rescanner"
+name = "ServerSeekerV2-Rust"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.80.0"
+repository = "https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-Rust"
 
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
@@ -12,14 +13,10 @@ toml = "0.8.19"
 tokio = { version = "1.0.0", features = ["full"] }
 sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio"] }
 indicatif = { version = "0.17.11" }
-anyhow = "1.0.97"
-futures = "0.3.31"
-
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold", "target-cpu=native"]
-linker = "/usr/bin/clang"
+#anyhow = "1.0.97"
+#futures = "0.3.31"
 
 [profile.release]
 strip = true
 lto = "fat"
-codegen-units = 1
+opt-level = 3

@@ -76,16 +76,23 @@ async fn main() {
 			ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
 				.unwrap()
 				.progress_chars("=>-");
-		let progress_bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
-		let state = Arc::new(State { pool, progress_bar });
+		// Create state to be passed to each task
+		let state = Arc::new(State {
+			pool,
+			progress_bar: ProgressBar::new(servers.len() as u64).with_style(style),
+		});
 
 		let mut ping_set = JoinSet::new();
+
 		let start = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("system time is before the unix epoch")
+			.expect(&format!(
+				"{RED}[ERROR] System time is before the unix epoch!{RESET}"
+			))
 			.as_secs() as i64;
 
+		// Spawn a new task for every result
 		for ip in servers {
 			for port in port_start..=port_end {
 				ping_set.spawn(run((ip.to_owned(), port), state.clone()));
@@ -93,8 +100,12 @@ async fn main() {
 		}
 
 		let results = ping_set.join_all().await;
-		let errors: Vec<_> = results.into_iter().filter_map(Result::err).collect();
+		let errors = results
+			.into_iter()
+			.filter_map(Result::err)
+			.collect::<Vec<_>>();
 
+		// Print scan errors, if any
 		if !errors.is_empty() {
 			println!(
 				"{YELLOW}[INFO] Scan returned {} errors!{RESET}",
@@ -104,17 +115,22 @@ async fn main() {
 
 		let end = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("system time is before the unix epoch")
+			.expect(&format!(
+				"{RED}[ERROR] System time is before the unix epoch!{RESET}"
+			))
 			.as_secs() as i64;
 
+		// Scan results
 		println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
 		println!("{GREEN}[INFO] Scan took {} seconds{RESET}", end - start);
 
+		// Quit if only one scan is requested in config
 		if !config.rescanner.repeat {
 			println!("{GREEN}[INFO] Exiting...{RESET}");
 			std::process::exit(0);
 		}
 
+		// Wait rescan delay before starting a new scan
 		if config.rescanner.rescan_delay > 0 {
 			println!(
 				"{GREEN}[INFO] Waiting {} seconds before starting another scan...{RESET}",

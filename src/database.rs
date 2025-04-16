@@ -21,7 +21,7 @@ pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> 
 		.collect()
 }
 
-pub async fn update(server: Server, conn: &PgPool) -> Result<(), sqlx::Error> {
+pub async fn update(server: Server, conn: &PgPool) -> Result<(), Error> {
 	let timestamp = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.expect("system time is before the unix epoch")

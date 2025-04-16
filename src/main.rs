@@ -77,11 +77,7 @@ async fn main() {
 				.progress_chars("=>-");
 		let progress_bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
-		let state = Arc::new(State {
-			// Pool isn't used anywhere else except for inside the futures so it's safe to move the value
-			pool,
-			progress_bar,
-		});
+		let state = Arc::new(State { pool, progress_bar });
 
 		let mut ping_set = JoinSet::new();
 
@@ -121,11 +117,11 @@ async fn main() {
 
 #[derive(Debug, Error)]
 enum RunError {
-	#[error("error while pinging server")]
+	#[error("Error while pinging server")]
 	PingServer(#[from] ping::PingServerError),
-	#[error("error while parsing response")]
+	#[error("Error while parsing response")]
 	ParseResponse(#[from] serde_json::Error),
-	#[error("error while updating database")]
+	#[error("Error while updating database")]
 	DatabaseUpdate(#[from] sqlx::Error),
 }
 

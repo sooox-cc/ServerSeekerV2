@@ -19,22 +19,24 @@ const PAYLOAD: [u8; 9] = [
 
 #[derive(Debug, Error)]
 pub enum PingServerError {
-	#[error("failed to parse address")]
+	#[error("Failed to parse address")]
 	AddressParseError(#[from] std::net::AddrParseError),
-	#[error("i/o error")]
+	#[error("I/O error")]
 	IOError(#[from] std::io::Error),
-	#[error("connection timed out")]
+	#[error("Connection timed out")]
 	TimedOut(#[from] tokio::time::error::Elapsed),
 }
 
-static PING_PERMITS: Semaphore = Semaphore::const_new(1000);
+static PERMITS: Semaphore = Semaphore::const_new(500);
 
 pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
 	let address = format!("{}:{}", host.0, host.1);
 	let socket = SocketAddr::from_str(address.as_str())?;
 
+	// Wait for a permit to continue
+	let _permit = PERMITS.acquire().await.unwrap();
+
 	// Connect and create buffer
-	let _permit = PING_PERMITS.acquire().await.unwrap();
 	let mut stream =
 		tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
 	let mut buffer = [0; 1024];

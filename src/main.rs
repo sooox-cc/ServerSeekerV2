@@ -4,11 +4,13 @@ mod database;
 mod ping;
 mod response;
 
+use crate::database::fetch_count;
 use colors::{GREEN, RED, RESET, YELLOW};
 use config::load_config;
 use database::{connect, fetch_servers};
+use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
@@ -56,21 +58,8 @@ async fn main() {
 
 	loop {
 		let pool = connect(database_url.as_str()).await;
-
-		let servers = match fetch_servers(&pool).await {
-			Ok(servers) => {
-				println!(
-					"{GREEN}[INFO] Found {} servers to rescan!{RESET}",
-					servers.len()
-				);
-				servers
-			}
-			Err(_) => {
-				println!("{RED}[ERROR] Failed to fetch servers! Waiting 30 seconds and retrying...{RESET}");
-				tokio::time::sleep(Duration::from_secs(30)).await;
-				continue;
-			}
-		};
+		let mut servers = fetch_servers(&pool).await;
+		let length = fetch_count(&pool).await as u64;
 
 		let style =
 			ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
@@ -79,8 +68,8 @@ async fn main() {
 
 		// Create state to be passed to each task
 		let state = Arc::new(State {
-			pool,
-			progress_bar: ProgressBar::new(servers.len() as u64).with_style(style),
+			pool: pool.clone(),
+			progress_bar: ProgressBar::new(length).with_style(style),
 		});
 
 		let mut ping_set = JoinSet::new();
@@ -93,9 +82,11 @@ async fn main() {
 			.as_secs() as i64;
 
 		// Spawn a new task for every result
-		for ip in servers {
+		while let Some(row) = servers.try_next().await.unwrap() {
+			let address: String = row.get(0);
+
 			for port in port_start..=port_end {
-				ping_set.spawn(run((ip.to_owned(), port), state.clone()));
+				ping_set.spawn(run((address.to_owned(), port), state.clone()));
 			}
 		}
 

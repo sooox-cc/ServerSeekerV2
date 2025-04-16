@@ -1,5 +1,7 @@
 use crate::colors::{RED, RESET};
 use crate::response::Server;
+use futures_core::stream::BoxStream;
+use sqlx::postgres::PgRow;
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,15 +12,16 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 	}
 }
 
-// TODO! Return a stream of results instead of a Vec for performance
-pub async fn fetch_servers(pool: &Pool<Postgres>) -> Result<Vec<String>, Error> {
-	// Sort results by oldest servers first
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC")
-		.fetch_all(pool)
-		.await?
-		.into_iter()
-		.map(|row| row.try_get(0))
-		.collect()
+pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
+}
+
+pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
+	sqlx::query("SELECT COUNT(address) FROM servers")
+		.fetch_one(pool)
+		.await
+		.unwrap()
+		.get(0)
 }
 
 pub async fn update(server: Server, conn: &PgPool) -> Result<(), Error> {

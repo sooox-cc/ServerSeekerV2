@@ -144,8 +144,8 @@ enum RunError {
 
 async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
 	let results = ping::ping_server(&host).await?;
-	let response = response::parse_response(results, &host)?;
-	database::update(response, &state.pool).await?;
+	let response = response::parse_response(results)?;
+	let _ = database::update(response, &state.pool, &host).await;
 	state.progress_bar.inc(1);
 
 	Ok(())

@@ -74,7 +74,7 @@ pub struct Mod {
 impl Server {
 	pub fn get_type(&self) -> ServerType {
 		// Neoforge sends a "isModded" field
-		if self.modded.unwrap_or(false) {
+		if self.modded.is_some() {
 			return ServerType::NEOFORGE;
 		}
 

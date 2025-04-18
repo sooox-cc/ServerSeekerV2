@@ -36,8 +36,16 @@ pub struct Server {
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct ForgeData {
-	pub mods: Vec<Mod>,
+pub struct Version {
+	pub name: String,
+	pub protocol: i32,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub enum Description {
+	Plain(String),
+	Object { text: String },
 }
 
 #[allow(dead_code)]
@@ -50,16 +58,15 @@ pub struct Players {
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct Version {
+pub struct Player {
+	pub id: String,
 	pub name: String,
-	pub protocol: i32,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct Player {
-	pub id: String,
-	pub name: String,
+pub struct ForgeData {
+	pub mods: Vec<Mod>,
 }
 
 #[allow(dead_code)]

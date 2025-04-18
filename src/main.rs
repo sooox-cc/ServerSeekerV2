@@ -76,9 +76,7 @@ async fn main() {
 
 		let start = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect(&format!(
-				"{RED}[ERROR] System time is before the unix epoch!{RESET}"
-			))
+			.expect("System time is before the unix epoch")
 			.as_secs() as i64;
 
 		// Spawn a new task for every result
@@ -106,9 +104,7 @@ async fn main() {
 
 		let end = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect(&format!(
-				"{RED}[ERROR] System time is before the unix epoch!{RESET}"
-			))
+			.expect("System time is before the unix epoch")
 			.as_secs() as i64;
 
 		// Scan results

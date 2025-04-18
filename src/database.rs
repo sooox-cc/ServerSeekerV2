@@ -24,13 +24,23 @@ pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
 		.get(0)
 }
 
-pub async fn update(server: Server, conn: &PgPool) -> Result<(), Error> {
+pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyhow::Result<()> {
+	let mut transaction = conn.begin().await?;
 	let timestamp = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.expect("system time is before the unix epoch")
 		.as_secs() as i32;
-	let mut transaction = conn.begin().await?;
-	let address: &str = server.address.as_str();
+
+	let (address, port) = host;
+	// Can't be used in the database yet
+	let server_type = server.get_type();
+
+	let players = server
+		.players
+		.ok_or(anyhow::Error::msg("Players object is missing!"))?;
+	let forge_data = server
+		.forge_data
+		.ok_or(anyhow::Error::msg("ForgeData object is missing!"))?;
 
 	// Update server
 	sqlx::query(
@@ -47,30 +57,33 @@ pub async fn update(server: Server, conn: &PgPool) -> Result<(), Error> {
         WHERE address = $10
         AND port = $11",
 	)
-	.bind(server.version)
-	.bind(server.protocol)
-	.bind(server.icon)
-	.bind(server.motd)
+	.bind(server.version.name)
+	.bind(server.version.protocol)
+	.bind(server.favicon)
+	.bind(server.description)
 	.bind(server.prevents_reports)
 	.bind(server.enforces_secure_chat)
 	.bind(timestamp)
-	.bind(server.online_players)
-	.bind(server.max_players)
+	.bind(players.online)
+	.bind(players.max)
 	.bind(address)
-	.bind(server.port)
+	.bind(*port as i64)
 	.execute(&mut *transaction)
 	.await?;
 
-	// Upsert players
-	for player in server.players {
+	// Update players
+	for player in players
+		.sample
+		.ok_or(anyhow::Error::msg("Players sample is missing!"))?
+	{
 		sqlx::query("INSERT INTO playerhistory (address, port, playeruuid, playername, firstseen, lastseen) VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (address, port, playeruuid) DO UPDATE SET
                     lastseen = EXCLUDED.lastseen,
                     playername = EXCLUDED.playername")
             .bind(address)
-            .bind(server.port)
-            .bind(player.uuid)
-            .bind(player.username)
+            .bind(*port as i64)
+            .bind(player.id)
+            .bind(player.name)
             .bind(timestamp)
             .bind(timestamp)
             .execute(&mut *transaction)
@@ -78,17 +91,20 @@ pub async fn update(server: Server, conn: &PgPool) -> Result<(), Error> {
 	}
 
 	// Update mods
-	for mods in server.mods {
+	for mods in forge_data.mods {
 		sqlx::query("INSERT INTO mods (address, port, modid, modmarker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, modid) DO NOTHING")
             .bind(address)
-            .bind(server.port)
-            .bind(mods.mod_id)
-            .bind(mods.mod_name)
+            .bind(*port as i64)
+            .bind(mods.id)
+            .bind(mods.marker)
             .bind(timestamp)
             .bind(timestamp)
             .execute(&mut *transaction)
             .await?;
 	}
 
-	transaction.commit().await
+	transaction
+		.commit()
+		.await
+		.map_err(|_| anyhow::Error::msg("Failed to commit transaction!"))
 }

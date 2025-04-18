@@ -32,8 +32,8 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 		.as_secs() as i32;
 
 	let (address, port) = host;
-	// Can't be used in the database yet
-	let server_type = server.get_type();
+	// TODO: Can't be used in the database yet
+	// let server_type = server.get_type();
 
 	let players = server
 		.players

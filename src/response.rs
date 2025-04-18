@@ -101,8 +101,15 @@ impl Server {
 			Some("Leaves") => ServerType::LEAVES,
 			Some("Waterfall") => ServerType::WATERFALL,
 			Some("Bungeecord") => ServerType::BUNGEECORD,
-			Some(_) => ServerType::JAVA,
-			None => ServerType::JAVA,
+			_ => ServerType::JAVA,
+		}
+	}
+
+	pub fn check_opt_out(&self) -> bool {
+		if let Some(motd) = &self.description {
+			motd.contains("§b§d§f§d§b")
+		} else {
+			false
 		}
 	}
 }

@@ -14,7 +14,7 @@ use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -135,6 +135,7 @@ const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
 static PERMITS: Semaphore = Semaphore::const_new(500);
 
+#[tracing::instrument(skip(pool, progress_bar))]
 async fn run(
 	host: (String, u16),
 	pool: Pool<Postgres>,
@@ -157,6 +158,9 @@ async fn run(
 	}
 
 	let result = run_inner(host, pool).await;
+	if let Err(ref e) = result {
+		debug!("{e}");
+	}
 	progress_bar.inc(1);
 	result
 }

@@ -2,19 +2,19 @@ use serde::Deserialize;
 
 #[derive(Debug)]
 pub enum ServerType {
-	JAVA,
-	NEOFORGE,
-	LEXFORGE,
-	PAPER,
-	SPIGOT,
-	BUKKIT,
-	PURPUR,
-	FOLIA,
-	PUFFERFISH,
-	VELOCITY,
-	LEAVES,
-	WATERFALL,
-	BUNGEECORD,
+	Java,
+	Neoforge,
+	Lexforge,
+	Paper,
+	Spigot,
+	Bukkit,
+	Purpur,
+	Folia,
+	Pufferfish,
+	Velocity,
+	Leaves,
+	Waterfall,
+	Bungeecord,
 }
 
 #[allow(dead_code)]
@@ -82,26 +82,26 @@ impl Server {
 	pub fn get_type(&self) -> ServerType {
 		// Neoforge sends a "isModded" field
 		if self.modded.is_some() {
-			return ServerType::NEOFORGE;
+			return ServerType::Neoforge;
 		}
 
 		// Forge sends a "forgeData" object
 		if self.forge_data.is_some() {
-			return ServerType::LEXFORGE;
+			return ServerType::Lexforge;
 		}
 
 		match self.version.name.split(' ').nth(0) {
-			Some("Paper") => ServerType::PAPER,
-			Some("Spigot") => ServerType::SPIGOT,
-			Some("Bukkit") => ServerType::BUKKIT,
-			Some("Purpur") => ServerType::PURPUR,
-			Some("Folia") => ServerType::FOLIA,
-			Some("Pufferfish") => ServerType::PUFFERFISH,
-			Some("Velocity") => ServerType::VELOCITY,
-			Some("Leaves") => ServerType::LEAVES,
-			Some("Waterfall") => ServerType::WATERFALL,
-			Some("Bungeecord") => ServerType::BUNGEECORD,
-			_ => ServerType::JAVA,
+			Some("Paper") => ServerType::Paper,
+			Some("Spigot") => ServerType::Spigot,
+			Some("Bukkit") => ServerType::Bukkit,
+			Some("Purpur") => ServerType::Purpur,
+			Some("Folia") => ServerType::Folia,
+			Some("Pufferfish") => ServerType::Pufferfish,
+			Some("Velocity") => ServerType::Velocity,
+			Some("Leaves") => ServerType::Leaves,
+			Some("Waterfall") => ServerType::Waterfall,
+			Some("Bungeecord") => ServerType::Bungeecord,
+			_ => ServerType::Java,
 		}
 	}
 
@@ -115,5 +115,5 @@ impl Server {
 }
 
 pub fn parse_response(response: String) -> Result<Server, serde_json::Error> {
-	Ok(serde_json::from_str(&response)?)
+	serde_json::from_str(&response)
 }

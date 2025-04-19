@@ -137,7 +137,7 @@ enum RunError {
 	#[error("Error while updating database")]
 	DatabaseUpdate(#[from] sqlx::Error),
 	#[error("Server opted out of scanning")]
-	ServerOptOut(),
+	ServerOptOut,
 }
 
 async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
@@ -145,7 +145,7 @@ async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
 	let response = response::parse_response(results)?;
 
 	if response.check_opt_out() {
-		return Err(RunError::ServerOptOut());
+		return Err(RunError::ServerOptOut);
 	}
 
 	let _ = database::update(response, &state.pool, &host).await;

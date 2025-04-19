@@ -25,6 +25,8 @@ pub enum PingServerError {
 	IOError(#[from] std::io::Error),
 	#[error("Connection timed out")]
 	TimedOut(#[from] tokio::time::error::Elapsed),
+	#[error("Malformed response")]
+	MalformedResponse,
 }
 
 static PERMITS: Semaphore = Semaphore::const_new(500);
@@ -45,24 +47,24 @@ pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError
 
 	// Send payload
 	stream.write_all(&PAYLOAD).await?;
-	let mut total_read = stream.read(&mut buffer).await?;
+	let total_read = stream.read(&mut buffer).await?;
 
 	// Decode
 	let (varint, length) = decode(&buffer);
 	let bytes_needed = varint + length as usize;
+	if bytes_needed < 3 || total_read > bytes_needed {
+		return Err(PingServerError::MalformedResponse);
+	}
+
 	let mut output = vec![];
 	output.extend_from_slice(&buffer[..total_read]);
 	let json = decode(&(buffer[(length + 1).into()..]));
 
 	// Read everything
-	while total_read < bytes_needed {
-		let read = stream.read(&mut buffer).await?;
-		output.extend_from_slice(&buffer[..read]);
-		total_read += read;
-	}
-
-	// Explicitly shutdown stream
-	stream.shutdown().await?;
+	stream
+		.take((bytes_needed - total_read) as u64)
+		.read_to_end(&mut output)
+		.await?;
 
 	Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())
 }

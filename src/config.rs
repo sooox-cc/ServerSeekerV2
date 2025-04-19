@@ -1,8 +1,8 @@
-use crate::colors::{RED, RESET};
 use serde::Deserialize;
 use std::cmp::max;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -44,7 +44,7 @@ impl Rescanner {
 		let end = self.port_range_end;
 
 		if start > end {
-			println!("{RED}port_range_start cannot be greater than port_range_end!{RESET}");
+			error!("port_range_start cannot be greater than port_range_end!");
 			std::process::exit(1);
 		}
 

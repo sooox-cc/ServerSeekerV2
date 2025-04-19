@@ -1,14 +1,17 @@
-use crate::colors::{RED, RESET};
 use crate::response::Server;
 use futures_core::stream::BoxStream;
 use sqlx::postgres::PgRow;
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::error;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
 	match PgPool::connect(url).await {
 		Ok(pool) => pool,
-		Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
+		Err(e) => {
+			error!("Unable to connect to database: {e}");
+			std::process::exit(1);
+		}
 	}
 }
 

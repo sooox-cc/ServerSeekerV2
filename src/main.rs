@@ -1,11 +1,9 @@
-mod colors;
 mod config;
 mod database;
 mod ping;
 mod response;
 
 use crate::database::fetch_count;
-use colors::{GREEN, RED, RESET, YELLOW};
 use config::load_config;
 use database::{connect, fetch_servers};
 use futures_util::TryStreamExt;
@@ -15,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::task::JoinSet;
+use tracing::{info, warn};
 
 struct State {
 	pool: Pool<Postgres>,
@@ -23,8 +22,10 @@ struct State {
 
 #[tokio::main]
 async fn main() {
+	tracing_subscriber::fmt::init();
+
 	let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
-	println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
+	info!("Using config file {config_file}");
 	let config = load_config(config_file);
 
 	// Create database URL
@@ -42,19 +43,14 @@ async fn main() {
 	let total_ports = config.rescanner.total_ports();
 
 	if total_ports > 10 {
-		println!("{RED}[WARN] Large amount of ports! Scans will take exponentially longer for each port to scan!{RESET}");
+		warn!("Large amount of ports! Scans will take exponentially longer for each port to scan!");
 	}
 
 	if !config.rescanner.repeat {
-		println!(
-			"{YELLOW}[WARN] Repeat is not enabled in config file! Will only scan once!{RESET}"
-		);
+		warn!("Repeat is not enabled in config file! Will only scan once!");
 	}
 
-	println!(
-		"{GREEN}[INFO] Scanning port range {} - {} ({} port(s) per host){RESET}",
-		port_start, port_end, total_ports
-	);
+	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)",);
 
 	loop {
 		let pool = connect(database_url.as_str()).await;
@@ -96,10 +92,7 @@ async fn main() {
 
 		// Print scan errors, if any
 		if !errors.is_empty() {
-			println!(
-				"{YELLOW}[INFO] Scan returned {} errors!{RESET}",
-				errors.len()
-			);
+			warn!("Scan returned {} errors!", errors.len());
 		}
 
 		let end = SystemTime::now()
@@ -108,19 +101,19 @@ async fn main() {
 			.as_secs() as i64;
 
 		// Scan results
-		println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
-		println!("{GREEN}[INFO] Scan took {} seconds{RESET}", end - start);
+		info!("[INFO] Finished pinging all servers");
+		info!("Scan took {} seconds", end - start);
 
 		// Quit if only one scan is requested in config
 		if !config.rescanner.repeat {
-			println!("{GREEN}[INFO] Exiting...{RESET}");
+			info!("Exiting...");
 			std::process::exit(0);
 		}
 
 		// Wait rescan delay before starting a new scan
 		if config.rescanner.rescan_delay > 0 {
-			println!(
-				"{GREEN}[INFO] Waiting {} seconds before starting another scan...{RESET}",
+			info!(
+				"Waiting {} seconds before starting another scan...",
 				config.rescanner.rescan_delay
 			);
 			tokio::time::sleep(Duration::from_secs(config.rescanner.rescan_delay)).await;

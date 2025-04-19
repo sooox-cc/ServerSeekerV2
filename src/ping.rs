@@ -1,10 +1,9 @@
+use std::fmt::Debug;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
-use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Semaphore;
 
 const PAYLOAD: [u8; 9] = [
 	6, // Size: Amount of bytes in the message
@@ -23,13 +22,9 @@ pub enum PingServerError {
 	AddressParseError(#[from] std::net::AddrParseError),
 	#[error("I/O error")]
 	IOError(#[from] std::io::Error),
-	#[error("Connection timed out")]
-	TimedOut(#[from] tokio::time::error::Elapsed),
 	#[error("Malformed response")]
 	MalformedResponse,
 }
-
-static PERMITS: Semaphore = Semaphore::const_new(500);
 
 pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
 	let socket = SocketAddr::V4(SocketAddrV4::new(
@@ -37,16 +32,13 @@ pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError
 		host.1,
 	));
 
-	// Wait for a permit to continue
-	let _permit = PERMITS.acquire().await.unwrap();
-
 	// Connect and create buffer
-	let mut stream =
-		tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
+	let mut stream = TcpStream::connect(&socket).await?;
 	let mut buffer = [0; 1024];
 
 	// Send payload
 	stream.write_all(&PAYLOAD).await?;
+	// TODO: figure out why a good half of servers are timing out here
 	let total_read = stream.read(&mut buffer).await?;
 
 	// Decode

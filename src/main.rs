@@ -12,13 +12,9 @@ use sqlx::{Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
-
-struct State {
-	pool: Pool<Postgres>,
-	progress_bar: ProgressBar,
-}
 
 #[tokio::main]
 async fn main() {
@@ -52,21 +48,16 @@ async fn main() {
 
 	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)",);
 
+	let pool = connect(database_url.as_str()).await;
+	let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
+		.unwrap()
+		.progress_chars("=>-");
+
 	loop {
-		let pool = connect(database_url.as_str()).await;
 		let mut servers = fetch_servers(&pool).await;
 		let length = fetch_count(&pool).await as u64;
 
-		let style =
-			ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
-				.unwrap()
-				.progress_chars("=>-");
-
-		// Create state to be passed to each task
-		let state = Arc::new(State {
-			pool: pool.clone(),
-			progress_bar: ProgressBar::new(length).with_style(style),
-		});
+		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
 
 		let mut ping_set = JoinSet::new();
 
@@ -80,7 +71,11 @@ async fn main() {
 			let address: String = row.get(0);
 
 			for port in port_start..=port_end {
-				ping_set.spawn(run((address.to_owned(), port), state.clone()));
+				ping_set.spawn(run(
+					(address.to_owned(), port),
+					pool.clone(),
+					progress_bar.clone(),
+				));
 			}
 		}
 
@@ -101,7 +96,7 @@ async fn main() {
 			.as_secs() as i64;
 
 		// Scan results
-		info!("[INFO] Finished pinging all servers");
+		info!("Finished pinging all servers");
 		info!("Scan took {} seconds", end - start);
 
 		// Quit if only one scan is requested in config
@@ -129,20 +124,39 @@ enum RunError {
 	ParseResponse(#[from] serde_json::Error),
 	#[error("Error while updating database")]
 	DatabaseUpdate(#[from] sqlx::Error),
+	#[error("Connection timed out")]
+	TimedOut(#[from] tokio::time::error::Elapsed),
 	#[error("Server opted out of scanning")]
 	ServerOptOut,
 }
 
-async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
-	let results = ping::ping_server(&host).await?;
-	let response = response::parse_response(results)?;
+// TODO: add to config file
+const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
-	if response.check_opt_out() {
-		return Err(RunError::ServerOptOut);
+static PERMITS: Semaphore = Semaphore::const_new(500);
+
+async fn run(
+	host: (String, u16),
+	pool: Pool<Postgres>,
+	progress_bar: Arc<ProgressBar>,
+) -> Result<(), RunError> {
+	async fn run_inner(host: (String, u16), pool: Pool<Postgres>) -> Result<(), RunError> {
+		let permit = PERMITS.acquire().await.unwrap();
+		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(&host)).await??;
+		drop(permit);
+
+		let response = response::parse_response(results)?;
+
+		if response.check_opt_out() {
+			return Err(RunError::ServerOptOut);
+		}
+
+		let _ = database::update(response, &pool, &host).await;
+
+		Ok(())
 	}
 
-	let _ = database::update(response, &state.pool, &host).await;
-	state.progress_bar.inc(1);
-
-	Ok(())
+	let result = run_inner(host, pool).await;
+	progress_bar.inc(1);
+	result
 }

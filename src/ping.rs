@@ -56,7 +56,7 @@ pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError
 		return Err(PingServerError::MalformedResponse);
 	}
 
-	let mut output = vec![];
+	let mut output = Vec::with_capacity(bytes_needed);
 	output.extend_from_slice(&buffer[..total_read]);
 	let json = decode(&(buffer[(length + 1).into()..]));
 

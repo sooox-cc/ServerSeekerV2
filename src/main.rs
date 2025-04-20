@@ -161,6 +161,7 @@ async fn run(
 	if let Err(ref e) = result {
 		debug!("{e}");
 	}
+
 	progress_bar.inc(1);
 	result
 }

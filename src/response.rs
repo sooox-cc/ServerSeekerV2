@@ -22,12 +22,12 @@ pub enum ServerType {
 pub struct Server {
 	pub version: Version,
 	pub favicon: Option<String>,
+	pub players: Players,
 	pub description: Option<Description>,
 	#[serde(rename = "preventsChatReports")]
 	pub prevents_reports: Option<bool>,
 	#[serde(rename = "enforcesSecureChat")]
 	pub enforces_secure_chat: Option<bool>,
-	pub players: Option<Players>,
 	#[serde(rename = "isModded")]
 	pub modded: Option<bool>,
 	#[serde(rename = "forgeData")]

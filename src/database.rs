@@ -7,7 +7,7 @@ use tracing::error;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
 	match sqlx::postgres::PgPoolOptions::new()
-		.max_connections(50)
+		.max_connections(25)
 		.connect(url)
 		.await
 	{
@@ -20,7 +20,7 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 }
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100").fetch(pool)
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
 }
 
 pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
@@ -35,19 +35,13 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 	let mut transaction = conn.begin().await?;
 	let timestamp = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
-		.expect("system time is before the unix epoch")
+		.expect("System time is before the unix epoch")
 		.as_secs() as i32;
 
 	let (address, port) = host;
 	// TODO: Can't be used in the database yet
 	// let server_type = server.get_type();
 
-	let players = server
-		.players
-		.ok_or(anyhow::Error::msg("Players object is missing!"))?;
-	let forge_data = server
-		.forge_data
-		.ok_or(anyhow::Error::msg("ForgeData object is missing!"))?;
 	let description: String = server
 		.description
 		.ok_or(anyhow::Error::msg("MOTD is missing!"))?
@@ -75,43 +69,44 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 	.bind(server.prevents_reports)
 	.bind(server.enforces_secure_chat)
 	.bind(timestamp)
-	.bind(players.online)
-	.bind(players.max)
+	.bind(server.players.online)
+	.bind(server.players.max)
 	.bind(address)
 	.bind(*port as i64)
 	.execute(&mut *transaction)
 	.await?;
 
 	// Update players
-	for player in players
-		.sample
-		.ok_or(anyhow::Error::msg("Players sample is missing!"))?
-	{
-		sqlx::query("INSERT INTO playerhistory (address, port, playeruuid, playername, firstseen, lastseen) VALUES ($1, $2, $3, $4, $5, $6)
+	if let Some(sample) = server.players.sample {
+		for player in sample {
+			sqlx::query("INSERT INTO playerhistory (address, port, playeruuid, playername, firstseen, lastseen) VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (address, port, playeruuid) DO UPDATE SET
                     lastseen = EXCLUDED.lastseen,
                     playername = EXCLUDED.playername")
-            .bind(address)
-            .bind(*port as i64)
-            .bind(player.id)
-            .bind(player.name)
-            .bind(timestamp)
-            .bind(timestamp)
-            .execute(&mut *transaction)
-            .await?;
+						.bind(address)
+						.bind(*port as i64)
+						.bind(player.id)
+						.bind(player.name)
+						.bind(timestamp)
+						.bind(timestamp)
+						.execute(&mut *transaction)
+						.await?;
+		}
 	}
 
 	// Update mods
-	for mods in forge_data.mods {
-		sqlx::query("INSERT INTO mods (address, port, modid, modmarker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, modid) DO NOTHING")
-            .bind(address)
-            .bind(*port as i64)
-            .bind(mods.id)
-            .bind(mods.marker)
-            .bind(timestamp)
-            .bind(timestamp)
-            .execute(&mut *transaction)
-            .await?;
+	if let Some(mods_sample) = server.forge_data {
+		for mods in mods_sample.mods {
+			sqlx::query("INSERT INTO mods (address, port, modid, modmarker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, modid) DO NOTHING")
+				.bind(address)
+				.bind(*port as i64)
+				.bind(mods.id)
+				.bind(mods.marker)
+				.bind(timestamp)
+				.bind(timestamp)
+				.execute(&mut *transaction)
+				.await?;
+		}
 	}
 
 	transaction

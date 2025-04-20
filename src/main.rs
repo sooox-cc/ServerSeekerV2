@@ -133,7 +133,7 @@ enum RunError {
 // TODO: add to config file
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
-static PERMITS: Semaphore = Semaphore::const_new(500);
+static PERMITS: Semaphore = Semaphore::const_new(200);
 
 #[tracing::instrument(skip(pool, progress_bar))]
 async fn run(
@@ -159,9 +159,6 @@ async fn run(
 	}
 
 	let result = run_inner(host, pool).await;
-	if let Err(ref e) = result {
-		debug!("{e}");
-	}
 
 	progress_bar.inc(1);
 	result

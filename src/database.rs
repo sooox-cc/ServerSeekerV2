@@ -20,7 +20,7 @@ pub async fn connect(url: &str) -> Pool<Postgres> {
 }
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100").fetch(pool)
 }
 
 pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {

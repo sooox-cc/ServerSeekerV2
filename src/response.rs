@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 #[derive(Debug)]
 pub enum ServerType {
@@ -46,7 +46,25 @@ pub struct Version {
 #[serde(untagged)]
 pub enum Description {
 	Plain(String),
-	Complex { text: String },
+	Complex(DescriptionComplex),
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct DescriptionComplex {
+	pub text: Option<String>,
+	pub color: Option<String>,
+	#[serde(default)]
+	pub bold: bool,
+	#[serde(default)]
+	pub italic: bool,
+	#[serde(default)]
+	pub underline: bool,
+	#[serde(default)]
+	pub strikethrough: bool,
+	#[serde(default)]
+	pub obfuscated: bool,
+	pub extra: Option<Vec<DescriptionComplex>>,
 }
 
 #[allow(dead_code)]
@@ -106,6 +124,7 @@ impl Server {
 		}
 	}
 
+	// Has the user opted out of scanning?
 	pub fn check_opt_out(&self) -> bool {
 		match &self.description {
 			Some(description) => String::from(description.clone()).contains("§b§d§f§d§b"),
@@ -118,7 +137,7 @@ impl From<Description> for String {
 	fn from(value: Description) -> Self {
 		match value {
 			Description::Plain(s) => s,
-			Description::Complex { text } => text,
+			Description::Complex(s) => String::from("SSV2-Rust Testing!"),
 		}
 	}
 }

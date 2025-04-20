@@ -3,7 +3,7 @@ use futures_core::stream::BoxStream;
 use sqlx::postgres::PgRow;
 use sqlx::{Error, PgConnection, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::info;
+use tracing::{info, warn};
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
 	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
@@ -21,12 +21,12 @@ pub async fn update(
 	server: Server,
 	(address, port): &(String, u16),
 	transaction: &mut PgConnection,
-) -> anyhow::Result<()> {
+) -> Result<(), sqlx::Error> {
 	if server.check_opt_out() {
 		sqlx::query("DELETE FROM servers WHERE address = $1")
 			.bind(address)
 			.execute(&mut *transaction)
-			.await;
+			.await?;
 		info!("Removing {address} from database due to opt-out");
 		return Ok(());
 	}
@@ -39,10 +39,13 @@ pub async fn update(
 	// TODO: Can't be used in the database yet
 	// let server_type = server.get_type();
 
-	let description: String = server
-		.description
-		.ok_or(anyhow::Error::msg("MOTD is missing!"))?
-		.into();
+	let description: String = match server.description {
+		Some(description) => description.into(),
+		None => {
+			warn!("{address}: Missing MOTD");
+			return Ok(());
+		}
+	};
 
 	// Update server
 	sqlx::query(

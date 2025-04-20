@@ -183,7 +183,7 @@ async fn run(
 
 		let response = response::parse_response(results)?;
 
-		database::update(response, &host, &mut *transaction.lock().await).await;
+		database::update(response, &host, &mut *transaction.lock().await).await?;
 
 		Ok(())
 	}

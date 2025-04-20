@@ -145,6 +145,7 @@ async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
 	let response = response::parse_response(results)?;
 
 	if response.check_opt_out() {
+		database::remove_server(host.0, &state.pool).await?;
 		return Err(RunError::ServerOptOut());
 	}
 

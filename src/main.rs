@@ -149,6 +149,7 @@ async fn run(
 		let response = response::parse_response(results)?;
 
 		if response.check_opt_out() {
+			database::remove_server(host.0, &pool).await?;
 			return Err(RunError::ServerOptOut);
 		}
 

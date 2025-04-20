@@ -1,12 +1,20 @@
 use crate::response::Server;
 use futures_core::stream::BoxStream;
-use sqlx::postgres::PgRow;
+use sqlx::postgres::{PgConnectOptions, PgQueryResult, PgRow};
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
-	match PgPool::connect(url).await {
+	let options = PgConnectOptions::new()
+		.host(url)
+		.application_name("ServerSeekerV2-Rust");
+
+	match sqlx::postgres::PgPoolOptions::new()
+		.max_connections(50)
+		.connect_with(options)
+		.await
+	{
 		Ok(pool) => pool,
 		Err(e) => {
 			error!("Unable to connect to database: {e}");
@@ -110,4 +118,11 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 		.commit()
 		.await
 		.map_err(|_| anyhow::Error::msg("Failed to commit transaction!"))
+}
+
+pub async fn remove_server(address: String, conn: &PgPool) -> Result<PgQueryResult, Error> {
+	sqlx::query("DELETE FROM servers WHERE address = $1")
+		.bind(address)
+		.execute(conn)
+		.await
 }

@@ -1,27 +1,26 @@
-use crate::colors::{RED, RESET};
 use crate::response::Server;
 use futures_core::stream::BoxStream;
-use sqlx::postgres::{PgConnectOptions, PgQueryResult, PgRow};
+use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::error;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
-	let options = PgConnectOptions::new()
-		.host(url)
-		.application_name("ServerSeekerV2-Rust");
-
 	match sqlx::postgres::PgPoolOptions::new()
 		.max_connections(50)
-		.connect_with(options)
+		.connect(url)
 		.await
 	{
 		Ok(pool) => pool,
-		Err(e) => panic!("{RED}Unable to connect to database: {e}{RESET}"),
+		Err(e) => {
+			error!("Unable to connect to database: {e}");
+			std::process::exit(1);
+		}
 	}
 }
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100").fetch(pool)
 }
 
 pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
@@ -49,6 +48,10 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 	let forge_data = server
 		.forge_data
 		.ok_or(anyhow::Error::msg("ForgeData object is missing!"))?;
+	let description: String = server
+		.description
+		.ok_or(anyhow::Error::msg("MOTD is missing!"))?
+		.into();
 
 	// Update server
 	sqlx::query(
@@ -68,7 +71,7 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 	.bind(server.version.name)
 	.bind(server.version.protocol)
 	.bind(server.favicon)
-	.bind(server.description)
+	.bind(description)
 	.bind(server.prevents_reports)
 	.bind(server.enforces_secure_chat)
 	.bind(timestamp)

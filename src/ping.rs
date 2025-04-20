@@ -1,10 +1,9 @@
+use std::fmt::Debug;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
-use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Semaphore;
 
 const PAYLOAD: [u8; 9] = [
 	6, // Size: Amount of bytes in the message
@@ -23,11 +22,9 @@ pub enum PingServerError {
 	AddressParseError(#[from] std::net::AddrParseError),
 	#[error("I/O error")]
 	IOError(#[from] std::io::Error),
-	#[error("Connection timed out")]
-	TimedOut(#[from] tokio::time::error::Elapsed),
+	#[error("Malformed response")]
+	MalformedResponse,
 }
-
-static PERMITS: Semaphore = Semaphore::const_new(500);
 
 pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
 	let socket = SocketAddr::V4(SocketAddrV4::new(
@@ -35,34 +32,31 @@ pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError
 		host.1,
 	));
 
-	// Wait for a permit to continue
-	let _permit = PERMITS.acquire().await.unwrap();
-
 	// Connect and create buffer
-	let mut stream =
-		tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket)).await??;
+	let mut stream = TcpStream::connect(&socket).await?;
 	let mut buffer = [0; 1024];
 
 	// Send payload
 	stream.write_all(&PAYLOAD).await?;
-	let mut total_read = stream.read(&mut buffer).await?;
+	// TODO: figure out why a good half of servers are timing out here
+	let total_read = stream.read(&mut buffer).await?;
 
 	// Decode
 	let (varint, length) = decode(&buffer);
 	let bytes_needed = varint + length as usize;
-	let mut output = vec![];
+	if bytes_needed < 3 || total_read > bytes_needed {
+		return Err(PingServerError::MalformedResponse);
+	}
+
+	let mut output = Vec::with_capacity(bytes_needed);
 	output.extend_from_slice(&buffer[..total_read]);
 	let json = decode(&(buffer[(length + 1).into()..]));
 
 	// Read everything
-	while total_read < bytes_needed {
-		let read = stream.read(&mut buffer).await?;
-		output.extend_from_slice(&buffer[..read]);
-		total_read += read;
-	}
-
-	// Explicitly shutdown stream
-	stream.shutdown().await?;
+	stream
+		.take((bytes_needed - total_read) as u64)
+		.read_to_end(&mut output)
+		.await?;
 
 	Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())
 }

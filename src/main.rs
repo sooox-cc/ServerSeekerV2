@@ -1,11 +1,9 @@
-mod colors;
 mod config;
 mod database;
 mod ping;
 mod response;
 
 use crate::database::fetch_count;
-use colors::{GREEN, RED, RESET, YELLOW};
 use config::load_config;
 use database::{connect, fetch_servers};
 use futures_util::TryStreamExt;
@@ -14,17 +12,16 @@ use sqlx::{Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-
-struct State {
-	pool: Pool<Postgres>,
-	progress_bar: ProgressBar,
-}
+use tracing::{debug, info, warn};
 
 #[tokio::main]
 async fn main() {
+	tracing_subscriber::fmt::init();
+
 	let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
-	println!("{GREEN}[INFO] Using config file {}{RESET}", config_file);
+	info!("Using config file {config_file}");
 	let config = load_config(config_file);
 
 	// Create database URL
@@ -42,35 +39,25 @@ async fn main() {
 	let total_ports = config.rescanner.total_ports();
 
 	if total_ports > 10 {
-		println!("{RED}[WARN] Large amount of ports! Scans will take exponentially longer for each port to scan!{RESET}");
+		warn!("Large amount of ports! Scans will take exponentially longer for each port to scan!");
 	}
 
 	if !config.rescanner.repeat {
-		println!(
-			"{YELLOW}[WARN] Repeat is not enabled in config file! Will only scan once!{RESET}"
-		);
+		warn!("Repeat is not enabled in config file! Will only scan once!");
 	}
 
-	println!(
-		"{GREEN}[INFO] Scanning port range {} - {} ({} port(s) per host){RESET}",
-		port_start, port_end, total_ports
-	);
+	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)",);
+
+	let pool = connect(database_url.as_str()).await;
+	let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
+		.unwrap()
+		.progress_chars("=>-");
 
 	loop {
-		let pool = connect(database_url.as_str()).await;
 		let mut servers = fetch_servers(&pool).await;
 		let length = fetch_count(&pool).await as u64;
 
-		let style =
-			ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
-				.unwrap()
-				.progress_chars("=>-");
-
-		// Create state to be passed to each task
-		let state = Arc::new(State {
-			pool: pool.clone(),
-			progress_bar: ProgressBar::new(length).with_style(style),
-		});
+		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
 
 		let mut ping_set = JoinSet::new();
 
@@ -84,7 +71,11 @@ async fn main() {
 			let address: String = row.get(0);
 
 			for port in port_start..=port_end {
-				ping_set.spawn(run((address.to_owned(), port), state.clone()));
+				ping_set.spawn(run(
+					(address.to_owned(), port),
+					pool.clone(),
+					progress_bar.clone(),
+				));
 			}
 		}
 
@@ -96,10 +87,7 @@ async fn main() {
 
 		// Print scan errors, if any
 		if !errors.is_empty() {
-			println!(
-				"{YELLOW}[INFO] Scan returned {} errors!{RESET}",
-				errors.len()
-			);
+			warn!("Scan returned {} errors!", errors.len());
 		}
 
 		let end = SystemTime::now()
@@ -108,19 +96,19 @@ async fn main() {
 			.as_secs() as i64;
 
 		// Scan results
-		println!("{GREEN}[INFO] Finished pinging all servers{RESET}");
-		println!("{GREEN}[INFO] Scan took {} seconds{RESET}", end - start);
+		info!("Finished pinging all servers");
+		info!("Scan took {} seconds", end - start);
 
 		// Quit if only one scan is requested in config
 		if !config.rescanner.repeat {
-			println!("{GREEN}[INFO] Exiting...{RESET}");
+			info!("Exiting...");
 			std::process::exit(0);
 		}
 
 		// Wait rescan delay before starting a new scan
 		if config.rescanner.rescan_delay > 0 {
-			println!(
-				"{GREEN}[INFO] Waiting {} seconds before starting another scan...{RESET}",
+			info!(
+				"Waiting {} seconds before starting another scan...",
 				config.rescanner.rescan_delay
 			);
 			tokio::time::sleep(Duration::from_secs(config.rescanner.rescan_delay)).await;
@@ -136,21 +124,45 @@ enum RunError {
 	ParseResponse(#[from] serde_json::Error),
 	#[error("Error while updating database")]
 	DatabaseUpdate(#[from] sqlx::Error),
+	#[error("Connection timed out")]
+	TimedOut(#[from] tokio::time::error::Elapsed),
 	#[error("Server opted out of scanning")]
-	ServerOptOut(),
+	ServerOptOut,
 }
 
-async fn run(host: (String, u16), state: Arc<State>) -> Result<(), RunError> {
-	let results = ping::ping_server(&host).await?;
-	let response = response::parse_response(results)?;
+// TODO: add to config file
+const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
-	if response.check_opt_out() {
-		database::remove_server(host.0, &state.pool).await?;
-		return Err(RunError::ServerOptOut());
+static PERMITS: Semaphore = Semaphore::const_new(500);
+
+#[tracing::instrument(skip(pool, progress_bar))]
+async fn run(
+	host: (String, u16),
+	pool: Pool<Postgres>,
+	progress_bar: Arc<ProgressBar>,
+) -> Result<(), RunError> {
+	async fn run_inner(host: (String, u16), pool: Pool<Postgres>) -> Result<(), RunError> {
+		let permit = PERMITS.acquire().await.unwrap();
+		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(&host)).await??;
+		drop(permit);
+
+		let response = response::parse_response(results)?;
+
+		if response.check_opt_out() {
+			database::remove_server(host.0, &pool).await?;
+			return Err(RunError::ServerOptOut);
+		}
+
+		let _ = database::update(response, &pool, &host).await;
+
+		Ok(())
 	}
 
-	let _ = database::update(response, &state.pool, &host).await;
-	state.progress_bar.inc(1);
+	let result = run_inner(host, pool).await;
+	if let Err(ref e) = result {
+		debug!("{e}");
+	}
 
-	Ok(())
+	progress_bar.inc(1);
+	result
 }

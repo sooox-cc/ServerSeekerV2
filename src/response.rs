@@ -22,7 +22,7 @@ pub enum ServerType {
 pub struct Server {
 	pub version: Version,
 	pub favicon: Option<String>,
-	pub description: Option<String>,
+	pub description: Option<Description>,
 	#[serde(rename = "preventsChatReports")]
 	pub prevents_reports: Option<bool>,
 	#[serde(rename = "enforcesSecureChat")]
@@ -42,10 +42,11 @@ pub struct Version {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
 pub enum Description {
 	Plain(String),
-	Object { text: String },
+	Complex { text: String },
 }
 
 #[allow(dead_code)]
@@ -106,10 +107,18 @@ impl Server {
 	}
 
 	pub fn check_opt_out(&self) -> bool {
-		if let Some(motd) = &self.description {
-			motd.contains("§b§d§f§d§b")
-		} else {
-			false
+		match &self.description {
+			Some(description) => String::from(description.clone()).contains("§b§d§f§d§b"),
+			None => false,
+		}
+	}
+}
+
+impl From<Description> for String {
+	fn from(value: Description) -> Self {
+		match value {
+			Description::Plain(s) => s,
+			Description::Complex { text } => text,
 		}
 	}
 }

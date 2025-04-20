@@ -14,7 +14,7 @@ use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -88,6 +88,16 @@ async fn main() {
 		// Print scan errors, if any
 		if !errors.is_empty() {
 			warn!("Scan returned {} errors!", errors.len());
+			let mut counts = [0u32; 5];
+			for e in errors {
+				let i: usize = e.into();
+				counts[i] += 1;
+			}
+			warn!("{} errors while pinging servers", counts[0]);
+			warn!("{} errors while parsing responses", counts[1]);
+			warn!("{} errors while updating the database", counts[2]);
+			warn!("{} connection timeouts", counts[3]);
+			warn!("{} server opt-outs", counts[4]);
 		}
 
 		let end = SystemTime::now()
@@ -129,13 +139,23 @@ enum RunError {
 	#[error("Server opted out of scanning")]
 	ServerOptOut,
 }
+impl Into<usize> for RunError {
+	fn into(self) -> usize {
+		match self {
+			Self::PingServer(_) => 0,
+			Self::ParseResponse(_) => 1,
+			Self::DatabaseUpdate(_) => 2,
+			Self::TimedOut(_) => 3,
+			Self::ServerOptOut => 4,
+		}
+	}
+}
 
 // TODO: add to config file
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
 static PERMITS: Semaphore = Semaphore::const_new(200);
 
-#[tracing::instrument(skip(pool, progress_bar))]
 async fn run(
 	host: (String, u16),
 	pool: Pool<Postgres>,
@@ -159,7 +179,6 @@ async fn run(
 	}
 
 	let result = run_inner(host, pool).await;
-
 	progress_bar.inc(1);
 	result
 }

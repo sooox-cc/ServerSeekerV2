@@ -1,18 +1,14 @@
 use crate::response::Server;
 use futures_core::stream::BoxStream;
-use sqlx::postgres::{PgConnectOptions, PgQueryResult, PgRow};
+use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::{Error, PgPool, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
 
 pub async fn connect(url: &str) -> Pool<Postgres> {
-	let options = PgConnectOptions::new()
-		.host(url)
-		.application_name("ServerSeekerV2-Rust");
-
 	match sqlx::postgres::PgPoolOptions::new()
 		.max_connections(50)
-		.connect_with(options)
+		.connect(url)
 		.await
 	{
 		Ok(pool) => pool,

@@ -3,7 +3,7 @@ use futures_core::stream::BoxStream;
 use sqlx::postgres::PgRow;
 use sqlx::{Error, PgConnection, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
 	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
@@ -42,7 +42,7 @@ pub async fn update(
 	let description: String = match server.description {
 		Some(description) => description.into(),
 		None => {
-			warn!("{address}: Missing MOTD");
+			debug!("{address}: Missing MOTD");
 			return Ok(());
 		}
 	};

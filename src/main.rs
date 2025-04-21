@@ -166,7 +166,7 @@ impl Into<usize> for RunError {
 // TODO: add to config file
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
-static PERMITS: Semaphore = Semaphore::const_new(1000);
+static PERMITS: Semaphore = Semaphore::const_new(2000);
 
 async fn run(
 	host: (String, u16),

@@ -1,4 +1,5 @@
-use serde::{Deserialize, Deserializer};
+use crate::config::PlayerTracking;
+use serde::Deserialize;
 
 #[derive(Debug)]
 pub enum ServerType {
@@ -133,11 +134,23 @@ impl Server {
 	}
 }
 
+impl Players {
+	pub fn player_track_check(&self, players: PlayerTracking) {
+		if let Some(sample) = &self.sample {
+			for p in sample {
+				if players.players.contains(&p.name) {
+					todo!()
+				}
+			}
+		}
+	}
+}
+
 impl From<Description> for String {
 	fn from(value: Description) -> Self {
 		match value {
 			Description::Plain(s) => s,
-			Description::Complex(s) => String::from("SSV2-Rust Testing!"),
+			Description::Complex(_) => String::from("SSV2-Rust Testing!"),
 		}
 	}
 }

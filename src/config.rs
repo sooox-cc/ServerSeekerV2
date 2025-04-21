@@ -7,6 +7,7 @@ use tracing::{error, info};
 #[derive(Deserialize)]
 pub struct Config {
 	pub database: Database,
+	pub player_tracker: PlayerTracking,
 	pub rescanner: Rescanner,
 }
 
@@ -17,6 +18,12 @@ pub struct Database {
 	pub table: String,
 	pub user: String,
 	pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct PlayerTracking {
+	pub enabled: bool,
+	pub players: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -32,8 +39,8 @@ impl Default for Rescanner {
 		Self {
 			repeat: true,
 			rescan_delay: 60,
-			port_range_start: 25560,
-			port_range_end: 25570,
+			port_range_start: 25565,
+			port_range_end: 25565,
 		}
 	}
 }

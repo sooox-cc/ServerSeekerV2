@@ -8,6 +8,12 @@ port_range_start = 25565
 # End of port range
 port_range_end = 25565
 
+[player_tracking]
+# Enable player tracking?
+enabled = false
+# List of players to track
+players = [""]
+
 [database]
 # Database URL
 url = "database.yourdomain.xyz"

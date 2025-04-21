@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info};
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC LIMIT 5000").fetch(pool)
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC").fetch(pool)
 }
 
 pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {

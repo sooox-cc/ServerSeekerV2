@@ -1,23 +1,9 @@
 use crate::response::Server;
 use futures_core::stream::BoxStream;
-use sqlx::postgres::{PgQueryResult, PgRow};
-use sqlx::{Error, PgPool, Pool, Postgres, Row};
+use sqlx::postgres::PgRow;
+use sqlx::{Error, PgConnection, Pool, Postgres, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::error;
-
-pub async fn connect(url: &str) -> Pool<Postgres> {
-	match sqlx::postgres::PgPoolOptions::new()
-		.max_connections(25)
-		.connect(url)
-		.await
-	{
-		Ok(pool) => pool,
-		Err(e) => {
-			error!("Unable to connect to database: {e}");
-			std::process::exit(1);
-		}
-	}
-}
+use tracing::{debug, info};
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
 	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100").fetch(pool)
@@ -31,21 +17,35 @@ pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
 		.get(0)
 }
 
-pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyhow::Result<()> {
-	let mut transaction = conn.begin().await?;
+pub async fn update(
+	server: Server,
+	(address, port): &(String, u16),
+	transaction: &mut PgConnection,
+) -> Result<(), sqlx::Error> {
+	if server.check_opt_out() {
+		sqlx::query("DELETE FROM servers WHERE address = $1")
+			.bind(address)
+			.execute(&mut *transaction)
+			.await?;
+		info!("Removing {address} from database due to opt-out");
+		return Ok(());
+	}
+
 	let timestamp = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.expect("System time is before the unix epoch")
 		.as_secs() as i32;
 
-	let (address, port) = host;
 	// TODO: Can't be used in the database yet
 	// let server_type = server.get_type();
 
-	let description: String = server
-		.description
-		.ok_or(anyhow::Error::msg("MOTD is missing!"))?
-		.into();
+	let description: String = match server.description {
+		Some(description) => description.into(),
+		None => {
+			debug!("{address}: Missing MOTD");
+			return Ok(());
+		}
+	};
 
 	// Update server
 	sqlx::query(
@@ -109,15 +109,5 @@ pub async fn update(server: Server, conn: &PgPool, host: &(String, u16)) -> anyh
 		}
 	}
 
-	transaction
-		.commit()
-		.await
-		.map_err(|_| anyhow::Error::msg("Failed to commit transaction!"))
-}
-
-pub async fn remove_server(address: String, conn: &PgPool) -> Result<PgQueryResult, Error> {
-	sqlx::query("DELETE FROM servers WHERE address = $1")
-		.bind(address)
-		.execute(conn)
-		.await
+	Ok(())
 }

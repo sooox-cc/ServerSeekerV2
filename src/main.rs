@@ -3,18 +3,16 @@ mod database;
 mod ping;
 mod response;
 
-use crate::database::fetch_count;
 use config::load_config;
-use database::{connect, fetch_servers};
 use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{PgPool, PgTransaction, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinSet;
-use tracing::{debug, info, warn};
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -48,14 +46,24 @@ async fn main() {
 
 	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)",);
 
-	let pool = connect(database_url.as_str()).await;
+	let pool = match PgPool::connect(&database_url).await {
+		Ok(pool) => pool,
+		Err(e) => {
+			error!("Failed to connect to database: {e}");
+			std::process::exit(1);
+		}
+	};
+
 	let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
 		.unwrap()
 		.progress_chars("=>-");
 
 	loop {
-		let mut servers = fetch_servers(&pool).await;
-		let length = fetch_count(&pool).await as u64;
+		let mut servers = database::fetch_servers(&pool).await;
+		let length = database::fetch_count(&pool).await as u64;
+		let transaction = Arc::new(Mutex::new(
+			pool.begin().await.expect("failed to create transaction"),
+		));
 
 		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
 
@@ -73,7 +81,7 @@ async fn main() {
 			for port in port_start..=port_end {
 				ping_set.spawn(run(
 					(address.to_owned(), port),
-					pool.clone(),
+					transaction.clone(),
 					progress_bar.clone(),
 				));
 			}
@@ -88,7 +96,24 @@ async fn main() {
 		// Print scan errors, if any
 		if !errors.is_empty() {
 			warn!("Scan returned {} errors!", errors.len());
+			let mut counts = [0u32; 4];
+			for e in errors {
+				let i: usize = e.into();
+				counts[i] += 1;
+			}
+			warn!("{} errors while pinging servers", counts[0]);
+			warn!("{} errors while parsing responses", counts[1]);
+			warn!("{} errors while updating the database", counts[2]);
+			warn!("{} connection timeouts", counts[3]);
 		}
+
+		info!("Commiting results to database...");
+		Arc::try_unwrap(transaction)
+			.unwrap()
+			.into_inner()
+			.commit()
+			.await
+			.expect("error while commiting to database");
 
 		let end = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
@@ -126,40 +151,44 @@ enum RunError {
 	DatabaseUpdate(#[from] sqlx::Error),
 	#[error("Connection timed out")]
 	TimedOut(#[from] tokio::time::error::Elapsed),
-	#[error("Server opted out of scanning")]
-	ServerOptOut,
+}
+impl Into<usize> for RunError {
+	fn into(self) -> usize {
+		match self {
+			Self::PingServer(_) => 0,
+			Self::ParseResponse(_) => 1,
+			Self::DatabaseUpdate(_) => 2,
+			Self::TimedOut(_) => 3,
+		}
+	}
 }
 
 // TODO: add to config file
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
-static PERMITS: Semaphore = Semaphore::const_new(200);
+static PERMITS: Semaphore = Semaphore::const_new(2000);
 
-#[tracing::instrument(skip(pool, progress_bar))]
 async fn run(
 	host: (String, u16),
-	pool: Pool<Postgres>,
+	transaction: Arc<Mutex<PgTransaction<'_>>>,
 	progress_bar: Arc<ProgressBar>,
 ) -> Result<(), RunError> {
-	async fn run_inner(host: (String, u16), pool: Pool<Postgres>) -> Result<(), RunError> {
+	async fn run_inner(
+		host: (String, u16),
+		transaction: Arc<Mutex<PgTransaction<'_>>>,
+	) -> Result<(), RunError> {
 		let permit = PERMITS.acquire().await.unwrap();
 		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(&host)).await??;
 		drop(permit);
 
 		let response = response::parse_response(results)?;
 
-		if response.check_opt_out() {
-			database::remove_server(host.0, &pool).await?;
-			return Err(RunError::ServerOptOut);
-		}
-
-		let _ = database::update(response, &pool, &host).await;
+		database::update(response, &host, &mut *transaction.lock().await).await?;
 
 		Ok(())
 	}
 
-	let result = run_inner(host, pool).await;
-
+	let result = run_inner(host, transaction).await;
 	progress_bar.inc(1);
 	result
 }

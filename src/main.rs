@@ -93,6 +93,8 @@ async fn main() {
 			.filter_map(Result::err)
 			.collect::<Vec<_>>();
 
+		let errors_len = errors.len();
+
 		// Print scan errors
 		if !errors.is_empty() {
 			warn!("Scan returned {} errors!", errors.len());
@@ -108,7 +110,10 @@ async fn main() {
 			warn!("{} connection timeouts", counts[3]);
 		}
 
-		info!("Commiting {} results to database...", results_len);
+		info!(
+			"Commiting {} results to database...",
+			results_len - errors_len
+		);
 		Arc::try_unwrap(transaction)
 			.unwrap()
 			.into_inner()

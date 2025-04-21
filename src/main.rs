@@ -19,7 +19,6 @@ async fn main() {
 	tracing_subscriber::fmt::init();
 
 	let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
-	info!("Using config file {config_file}");
 	let config = load_config(config_file);
 
 	// Create database URL
@@ -66,15 +65,13 @@ async fn main() {
 		));
 
 		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
-
 		let mut ping_set = JoinSet::new();
-
-		let start = SystemTime::now()
+		let scan_start = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("System time is before the unix epoch")
-			.as_secs() as i64;
+			.expect("system time is before the unix epoch")
+			.as_secs();
 
-		// Spawn a new task for every result
+		// Streams results from the database
 		while let Some(row) = servers.try_next().await.unwrap() {
 			let address: String = row.get(0);
 
@@ -88,12 +85,15 @@ async fn main() {
 		}
 
 		let results = ping_set.join_all().await;
+		let results_len = results.len();
+
+		// Save all errors for statistics
 		let errors = results
 			.into_iter()
 			.filter_map(Result::err)
 			.collect::<Vec<_>>();
 
-		// Print scan errors, if any
+		// Print scan errors
 		if !errors.is_empty() {
 			warn!("Scan returned {} errors!", errors.len());
 			let mut counts = [0u32; 4];
@@ -101,13 +101,14 @@ async fn main() {
 				let i: usize = e.into();
 				counts[i] += 1;
 			}
+
 			warn!("{} errors while pinging servers", counts[0]);
 			warn!("{} errors while parsing responses", counts[1]);
 			warn!("{} errors while updating the database", counts[2]);
 			warn!("{} connection timeouts", counts[3]);
 		}
 
-		info!("Commiting results to database...");
+		info!("Commiting {} results to database...", results_len);
 		Arc::try_unwrap(transaction)
 			.unwrap()
 			.into_inner()
@@ -115,14 +116,12 @@ async fn main() {
 			.await
 			.expect("error while commiting to database");
 
-		let end = SystemTime::now()
+		let scan_end = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
-			.expect("System time is before the unix epoch")
-			.as_secs() as i64;
+			.expect("system time is before the unix epoch")
+			.as_secs();
 
-		// Scan results
-		info!("Finished pinging all servers");
-		info!("Scan took {} seconds", end - start);
+		info!("Scan took {} seconds", scan_end - scan_start);
 
 		// Quit if only one scan is requested in config
 		if !config.rescanner.repeat {

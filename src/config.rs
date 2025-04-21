@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::cmp::max;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
-use tracing::error;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -65,5 +65,6 @@ pub fn load_config(path: String) -> Config {
 	let mut contents = String::new();
 	file.read_to_string(&mut contents).unwrap_or_default();
 
+	info!("Using config file {path}");
 	toml::from_str(&contents).expect("Failed to parse config!")
 }

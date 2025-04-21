@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info};
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC LIMIT 100").fetch(pool)
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC LIMIT 5000").fetch(pool)
 }
 
 pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
@@ -21,7 +21,8 @@ pub async fn update(
 	server: Server,
 	(address, port): &(String, u16),
 	transaction: &mut PgConnection,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), Error> {
+	// Remove from database if server has opted out
 	if server.check_opt_out() {
 		sqlx::query("DELETE FROM servers WHERE address = $1")
 			.bind(address)
@@ -33,7 +34,7 @@ pub async fn update(
 
 	let timestamp = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
-		.expect("System time is before the unix epoch")
+		.expect("system time is before the unix epoch")
 		.as_secs() as i32;
 
 	// TODO: Can't be used in the database yet

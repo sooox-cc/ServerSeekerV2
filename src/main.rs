@@ -6,15 +6,8 @@ mod scan;
 
 use crate::scan::scan_servers;
 use config::load_config;
-use futures_util::TryStreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
-use sqlx::{PgPool, PgTransaction, Row};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{sync::Arc, time::Duration};
-use thiserror::Error;
-use tokio::sync::{Mutex, Semaphore};
-use tokio::task::JoinSet;
-use tracing::{error, info, warn};
+use sqlx::PgPool;
+use tracing::error;
 
 #[tokio::main]
 async fn main() {

@@ -86,6 +86,7 @@ pub async fn scan_servers(pool: Pool<Postgres>, config: Config) {
 			"Commiting {} results to database...",
 			results_len - errors_len
 		);
+
 		Arc::try_unwrap(transaction)
 			.unwrap()
 			.into_inner()

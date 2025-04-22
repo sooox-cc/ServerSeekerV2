@@ -7,7 +7,7 @@ use tracing::{error, info};
 #[derive(Deserialize)]
 pub struct Config {
 	pub database: Database,
-	pub player_tracker: PlayerTracking,
+	pub player_tracking: PlayerTracking,
 	pub rescanner: Rescanner,
 }
 

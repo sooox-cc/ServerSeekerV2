@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-pub async fn scan_servers(pool: Pool<Postgres>, config: Config) {
+pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 	let port_start = config.rescanner.port_range_start;
 	let port_end = config.rescanner.port_range_end;
 	let total_ports = config.rescanner.total_ports();
@@ -24,10 +24,6 @@ pub async fn scan_servers(pool: Pool<Postgres>, config: Config) {
 	}
 
 	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)");
-
-	let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
-		.unwrap()
-		.progress_chars("=>-");
 
 	loop {
 		let mut servers = database::fetch_servers(&pool).await;
@@ -119,7 +115,7 @@ pub async fn scan_servers(pool: Pool<Postgres>, config: Config) {
 }
 
 #[derive(Debug, Error)]
-enum RunError {
+pub enum RunError {
 	#[error("Error while pinging server")]
 	PingServer(#[from] ping::PingServerError),
 	#[error("Error while parsing response")]
@@ -140,12 +136,9 @@ impl Into<usize> for RunError {
 	}
 }
 
-// TODO: add to config file
-const TIMEOUT_SECS: Duration = Duration::from_secs(5);
-
 static PERMITS: Semaphore = Semaphore::const_new(2000);
 
-async fn run(
+pub async fn run(
 	host: (String, u16),
 	transaction: Arc<Mutex<PgTransaction<'_>>>,
 	progress_bar: Arc<ProgressBar>,
@@ -155,7 +148,7 @@ async fn run(
 		transaction: Arc<Mutex<PgTransaction<'_>>>,
 	) -> Result<(), RunError> {
 		let permit = PERMITS.acquire().await.unwrap();
-		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(&host)).await??;
+		let results = tokio::time::timeout(crate::TIMEOUT_SECS, ping::ping_server(&host)).await??;
 		drop(permit);
 
 		let response = response::parse_response(results)?;

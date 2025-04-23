@@ -1,10 +1,12 @@
 use crate::config::Config;
 use crate::scan;
+use crate::utils::scan_results;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::info;
@@ -57,14 +59,17 @@ pub fn parse_output(masscan_output: String) -> Vec<(String, u16)> {
 }
 
 pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
+	let masscan_config = config.masscan.config_file;
+	let masscan_output = config.masscan.output_file;
+
 	let transaction = Arc::new(Mutex::new(
 		pool.begin().await.expect("failed to create transaction"),
 	));
 
 	loop {
 		// TODO: Config changes needed here
-		start_masscan("masscan.conf".to_string());
-		let servers = parse_output("minecraft-servers.json".to_string());
+		start_masscan(masscan_config.clone());
+		let servers = parse_output(masscan_output.clone());
 		info!("{} servers found", servers.len());
 
 		let progress_bar =
@@ -80,8 +85,24 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 			));
 		});
 
-		join_set.join_all().await;
+		let results = join_set.join_all().await;
 
-		// TODO: Delay here
+		// Print information about scan
+		scan_results(results);
+
+		// Quit if only one scan is requested in config
+		if !config.scanner.repeat {
+			info!("Exiting");
+			std::process::exit(0);
+		}
+
+		// Wait rescan delay before starting a new scan
+		if config.scanner.scan_delay > 0 {
+			info!(
+				"Waiting {} seconds before starting another scan",
+				config.scanner.scan_delay
+			);
+			tokio::time::sleep(Duration::from_secs(config.scanner.scan_delay)).await;
+		}
 	}
 }

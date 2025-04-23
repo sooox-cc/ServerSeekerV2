@@ -4,6 +4,7 @@ mod masscan;
 mod ping;
 mod response;
 mod scan;
+mod utils;
 
 use config::load_config;
 use indicatif::ProgressStyle;
@@ -48,7 +49,7 @@ async fn main() {
 		.unwrap()
 		.progress_chars("=>-");
 
-	let mode = Mode::Rescan;
+	let mode = Mode::Discovery;
 
 	match mode {
 		Mode::Discovery => masscan::start(pool, config, style).await,

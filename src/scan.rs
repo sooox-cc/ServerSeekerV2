@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::utils::scan_results;
 use crate::{database, ping, response};
 use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -53,35 +54,9 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 		}
 
 		let results = ping_set.join_all().await;
-		let results_len = results.len();
 
-		// Save all errors for statistics
-		let errors = results
-			.into_iter()
-			.filter_map(Result::err)
-			.collect::<Vec<_>>();
-
-		let errors_len = errors.len();
-
-		// Print scan errors
-		if !errors.is_empty() {
-			warn!("Scan returned {} errors!", errors.len());
-			let mut counts = [0u32; 4];
-			for e in errors {
-				let i: usize = e.into();
-				counts[i] += 1;
-			}
-
-			warn!("{} errors while pinging servers", counts[0]);
-			warn!("{} errors while parsing responses", counts[1]);
-			warn!("{} errors while updating the database", counts[2]);
-			warn!("{} connection timeouts", counts[3]);
-		}
-
-		info!(
-			"Commiting {} results to database...",
-			results_len - errors_len
-		);
+		// Print information about scan
+		scan_results(results);
 
 		Arc::try_unwrap(transaction)
 			.unwrap()
@@ -99,7 +74,7 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 
 		// Quit if only one scan is requested in config
 		if !config.scanner.repeat {
-			info!("Exiting...");
+			info!("Exiting");
 			std::process::exit(0);
 		}
 

@@ -9,6 +9,7 @@ pub struct Config {
 	pub database: Database,
 	pub player_tracking: PlayerTracking,
 	pub scanner: Scanner,
+	pub masscan: Masscan,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +33,12 @@ pub struct Scanner {
 	pub scan_delay: u64,
 	pub port_range_start: u16,
 	pub port_range_end: u16,
+}
+
+#[derive(Deserialize)]
+pub struct Masscan {
+	pub config_file: String,
+	pub output_file: String,
 }
 
 impl Default for Scanner {

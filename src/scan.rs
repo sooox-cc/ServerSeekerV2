@@ -11,15 +11,15 @@ use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
-	let port_start = config.rescanner.port_range_start;
-	let port_end = config.rescanner.port_range_end;
-	let total_ports = config.rescanner.total_ports();
+	let port_start = config.scanner.port_range_start;
+	let port_end = config.scanner.port_range_end;
+	let total_ports = config.scanner.total_ports();
 
 	if total_ports > 10 {
 		warn!("Large amount of ports! Scans will take exponentially longer for each port to scan!");
 	}
 
-	if !config.rescanner.repeat {
+	if !config.scanner.repeat {
 		warn!("Repeat is not enabled in config file! Will only scan once!");
 	}
 
@@ -98,18 +98,18 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 		info!("Scan took {} seconds", scan_end - scan_start);
 
 		// Quit if only one scan is requested in config
-		if !config.rescanner.repeat {
+		if !config.scanner.repeat {
 			info!("Exiting...");
 			std::process::exit(0);
 		}
 
 		// Wait rescan delay before starting a new scan
-		if config.rescanner.rescan_delay > 0 {
+		if config.scanner.scan_delay > 0 {
 			info!(
 				"Waiting {} seconds before starting another scan...",
-				config.rescanner.rescan_delay
+				config.scanner.scan_delay
 			);
-			tokio::time::sleep(Duration::from_secs(config.rescanner.rescan_delay)).await;
+			tokio::time::sleep(Duration::from_secs(config.scanner.scan_delay)).await;
 		}
 	}
 }

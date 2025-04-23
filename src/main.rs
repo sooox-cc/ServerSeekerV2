@@ -1,5 +1,6 @@
 mod config;
 mod database;
+mod masscan;
 mod ping;
 mod response;
 mod scan;

@@ -1,10 +1,8 @@
 use serde::Deserialize;
-use std::io::Read;
 use std::process::Command;
 
-// TODO: Better name for this struct
 #[derive(Deserialize)]
-pub struct MasscanServer {
+pub struct Masscan {
 	pub ip: String,
 	pub ports: Vec<Port>,
 }
@@ -15,7 +13,7 @@ pub struct Port {
 }
 
 pub fn start_masscan(masscan_config: String) {
-	let mut output = if cfg!(target_os = "windows") {
+	if cfg!(target_os = "windows") {
 		Command::new("cmd.exe")
 			.arg("/c")
 			.arg(format!("masscan -c {masscan_config}"))
@@ -29,22 +27,20 @@ pub fn start_masscan(masscan_config: String) {
 			.arg(format!("sudo masscan -c {masscan_config}"))
 			.spawn()
 			.expect("failed to execute process")
-	};
-
-	output.wait().expect("failed to wait on child");
+	}
+	.wait()
+	.expect("failed to wait on child");
 }
 
 pub fn parse_output(masscan_output: String) -> Vec<(String, u16)> {
 	let file = std::fs::read_to_string(masscan_output).expect("failed to read masscan");
-	let output = serde_json::from_str::<Vec<MasscanServer>>(&file).expect("failed to read masscan");
-	let mut servers = vec![];
+	let output = serde_json::from_str::<Vec<Masscan>>(&file).expect("failed to read masscan");
 
-	// TODO: I know this can be done better
-	for server in output {
-		for port in server.ports {
-			servers.push((server.ip.clone(), port.port));
-		}
-	}
-
-	servers
+	output
+		.into_iter()
+		.flat_map(|entry| {
+			let ip = entry.ip;
+			entry.ports.into_iter().map(move |p| (ip.clone(), p.port))
+		})
+		.collect()
 }

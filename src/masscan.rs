@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 pub struct Masscan {
@@ -46,8 +46,15 @@ pub fn start_masscan(masscan_config: String) {
 }
 
 pub fn parse_output(masscan_output: String) -> Vec<(String, u16)> {
-	let file = std::fs::read_to_string(masscan_output).expect("failed to read masscan");
-	let output = serde_json::from_str::<Vec<Masscan>>(&file).expect("failed to read masscan");
+	let file = std::fs::read_to_string(&masscan_output).unwrap_or_else(|_| {
+		error!("Masscan output not found");
+		std::process::exit(1)
+	});
+
+	let output = serde_json::from_str::<Vec<Masscan>>(&file).unwrap_or_else(|_| {
+		error!("Failed to read masscan output");
+		std::process::exit(1)
+	});
 
 	output
 		.into_iter()

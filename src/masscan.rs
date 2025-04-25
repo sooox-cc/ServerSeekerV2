@@ -22,20 +22,16 @@ pub struct Port {
 	port: u16,
 }
 
-pub fn start_masscan(masscan_config: String) {
+pub fn start_masscan(masscan_config: &str) {
 	info!("Starting masscan...");
 	if cfg!(target_os = "windows") {
 		Command::new("cmd.exe")
-			.arg("/c")
-			.arg(format!("masscan -c {masscan_config}"))
+			.args(["masscan", "-c", masscan_config])
 			.spawn()
 			.expect("failed to execute process")
 	} else {
-		Command::new("/bin/sh")
-			.arg("-c")
-			// Masscan needs to be run as root, nothing I can do about it
-			// TODO! Change this to be a toggle in the config for security
-			.arg(format!("sudo masscan -c {masscan_config}"))
+		Command::new("sudo")
+			.args(["masscan", "-c", masscan_config])
 			.spawn()
 			.expect("failed to execute process")
 	}
@@ -45,29 +41,24 @@ pub fn start_masscan(masscan_config: String) {
 	info!("Masscan completed");
 }
 
-pub fn parse_output(masscan_output: String) -> Vec<(String, u16)> {
-	let file = std::fs::read_to_string(&masscan_output).unwrap_or_else(|_| {
-		error!("Masscan output not found");
-		std::process::exit(1)
-	});
+pub fn parse_output(masscan_output: &str) -> anyhow::Result<Vec<(String, u16)>> {
+	let file = std::fs::read_to_string(&masscan_output)?;
+	let output = serde_json::from_str::<Vec<Masscan>>(&file)?;
 
-	let output = serde_json::from_str::<Vec<Masscan>>(&file).unwrap_or_else(|_| {
-		error!("Failed to read masscan output");
-		std::process::exit(1)
-	});
-
-	output
+	Ok(output
 		.into_iter()
 		.flat_map(|entry| {
-			let ip = entry.ip;
-			entry.ports.into_iter().map(move |p| (ip.clone(), p.port))
+			entry
+				.ports
+				.into_iter()
+				.map(move |p| (entry.ip.clone(), p.port))
 		})
-		.collect()
+		.collect())
 }
 
 pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
-	let masscan_config = config.masscan.config_file;
-	let masscan_output = config.masscan.output_file;
+	let masscan_config = config.masscan.config_file.as_str();
+	let masscan_output = config.masscan.output_file.as_str();
 
 	let transaction = Arc::new(Mutex::new(
 		pool.begin().await.expect("failed to create transaction"),
@@ -79,8 +70,15 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 
 	loop {
 		// TODO: Config changes needed here
-		start_masscan(masscan_config.clone());
-		let servers = parse_output(masscan_output.clone());
+		start_masscan(masscan_config);
+		let servers = match parse_output(masscan_output) {
+			Ok(servers) => servers,
+			Err(e) => {
+				error!("Failed to parse masscan output: {e:?}");
+				std::process::exit(1);
+			}
+		};
+
 		info!("{} servers found", servers.len());
 
 		let progress_bar =

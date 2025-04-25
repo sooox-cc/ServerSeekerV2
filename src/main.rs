@@ -45,11 +45,14 @@ async fn main() {
 		}
 	};
 
-	let style = ProgressStyle::with_template("[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7}")
-		.unwrap()
-		.progress_chars("=>-");
+	let style = ProgressStyle::with_template(
+		"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
+	)
+	.unwrap()
+	.progress_chars("=>-");
 
-	let mode = Mode::Discovery;
+	// TODO: CLI arguments for this
+	let mode = Mode::Rescan;
 
 	match mode {
 		Mode::Discovery => masscan::start(pool, config, style).await,

@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::scan;
+use crate::utils;
 use crate::utils::scan_results;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Deserialize)]
 pub struct Masscan {
@@ -73,6 +73,10 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 		pool.begin().await.expect("failed to create transaction"),
 	));
 
+	if !config.scanner.repeat {
+		warn!("Repeat is not enabled in config file! Will only scan once!");
+	}
+
 	loop {
 		// TODO: Config changes needed here
 		start_masscan(masscan_config.clone());
@@ -85,7 +89,7 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 		let mut join_set = JoinSet::new();
 
 		servers.into_iter().for_each(|(ip, port)| {
-			join_set.spawn(scan::run(
+			join_set.spawn(utils::run(
 				(ip, port),
 				transaction.clone(),
 				progress_bar.clone(),

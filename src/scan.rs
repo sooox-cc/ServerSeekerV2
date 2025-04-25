@@ -1,13 +1,13 @@
 use crate::config::Config;
 use crate::utils::scan_results;
-use crate::{database, ping, response};
+use crate::{database, ping, utils};
 use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use sqlx::{PgTransaction, Pool, Postgres, Row};
+use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
@@ -45,7 +45,7 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 			let address: String = row.get(0);
 
 			for port in port_start..=port_end {
-				ping_set.spawn(run(
+				ping_set.spawn(utils::run(
 					(address.to_owned(), port),
 					transaction.clone(),
 					progress_bar.clone(),
@@ -109,31 +109,4 @@ impl Into<usize> for RunError {
 			Self::TimedOut(_) => 3,
 		}
 	}
-}
-
-static PERMITS: Semaphore = Semaphore::const_new(2000);
-
-pub async fn run(
-	host: (String, u16),
-	transaction: Arc<Mutex<PgTransaction<'_>>>,
-	progress_bar: Arc<ProgressBar>,
-) -> Result<(), RunError> {
-	async fn run_inner(
-		host: (String, u16),
-		transaction: Arc<Mutex<PgTransaction<'_>>>,
-	) -> Result<(), RunError> {
-		let permit = PERMITS.acquire().await.unwrap();
-		let results = tokio::time::timeout(crate::TIMEOUT_SECS, ping::ping_server(&host)).await??;
-		drop(permit);
-
-		let response = response::parse_response(results)?;
-
-		database::update(response, &host, &mut *transaction.lock().await).await?;
-
-		Ok(())
-	}
-
-	let result = run_inner(host, transaction).await;
-	progress_bar.inc(1);
-	result
 }

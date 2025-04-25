@@ -1,5 +1,12 @@
 use crate::scan::RunError;
+use crate::{database, ping, response};
+use indicatif::ProgressBar;
+use sqlx::PgTransaction;
+use std::sync::Arc;
+use tokio::sync::{Mutex, Semaphore};
 use tracing::{info, warn};
+
+static PERMITS: Semaphore = Semaphore::const_new(2000);
 
 pub fn scan_results(results: Vec<Result<(), RunError>>) {
 	let results_len = results.len();
@@ -28,4 +35,29 @@ pub fn scan_results(results: Vec<Result<(), RunError>>) {
 	}
 
 	info!("Commiting {} results to database", results_len - errors_len);
+}
+
+pub async fn run(
+	host: (String, u16),
+	transaction: Arc<Mutex<PgTransaction<'_>>>,
+	progress_bar: Arc<ProgressBar>,
+) -> Result<(), RunError> {
+	async fn run_inner(
+		host: (String, u16),
+		transaction: Arc<Mutex<PgTransaction<'_>>>,
+	) -> Result<(), RunError> {
+		let permit = PERMITS.acquire().await.unwrap();
+		let results = tokio::time::timeout(crate::TIMEOUT_SECS, ping::ping_server(&host)).await??;
+		drop(permit);
+
+		let response = response::parse_response(results)?;
+
+		database::update(response, &host, &mut *transaction.lock().await).await?;
+
+		Ok(())
+	}
+
+	let result = run_inner(host, transaction).await;
+	progress_bar.inc(1);
+	result
 }

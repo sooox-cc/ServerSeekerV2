@@ -7,8 +7,9 @@ use tracing::{error, info};
 #[derive(Deserialize)]
 pub struct Config {
 	pub database: Database,
-	pub player_tracker: PlayerTracking,
-	pub rescanner: Rescanner,
+	pub player_tracking: PlayerTracking,
+	pub scanner: Scanner,
+	pub masscan: Masscan,
 }
 
 #[derive(Deserialize)]
@@ -27,25 +28,31 @@ pub struct PlayerTracking {
 }
 
 #[derive(Deserialize)]
-pub struct Rescanner {
+pub struct Scanner {
 	pub repeat: bool,
-	pub rescan_delay: u64,
+	pub scan_delay: u64,
 	pub port_range_start: u16,
 	pub port_range_end: u16,
 }
 
-impl Default for Rescanner {
+#[derive(Deserialize)]
+pub struct Masscan {
+	pub config_file: String,
+	pub output_file: String,
+}
+
+impl Default for Scanner {
 	fn default() -> Self {
 		Self {
 			repeat: true,
-			rescan_delay: 60,
+			scan_delay: 60,
 			port_range_start: 25565,
 			port_range_end: 25565,
 		}
 	}
 }
 
-impl Rescanner {
+impl Scanner {
 	pub fn total_ports(&self) -> u16 {
 		let start = self.port_range_start;
 		let end = self.port_range_end;

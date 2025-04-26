@@ -58,6 +58,10 @@ pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError
 		.read_to_end(&mut output)
 		.await?;
 
+	if output.len() < (length + 1 + json.1).into() {
+		return Err(PingServerError::MalformedResponse);
+	}
+
 	Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())
 }
 

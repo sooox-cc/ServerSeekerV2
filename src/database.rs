@@ -1,20 +1,14 @@
 use crate::response::Server;
-use futures_core::stream::BoxStream;
 use sqlx::postgres::PgRow;
-use sqlx::{Error, PgConnection, Pool, Postgres, Row};
+use sqlx::{Error, PgConnection, Pool, Postgres};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info};
 
-pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, Error>> {
-	sqlx::query("SELECT address FROM servers ORDER BY lastseen DESC").fetch(pool)
-}
-
-pub async fn fetch_count(pool: &Pool<Postgres>) -> i64 {
-	sqlx::query("SELECT COUNT(address) FROM servers")
-		.fetch_one(pool)
+pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
+	sqlx::query("SELECT address FROM servers ORDER BY lastseen ASC")
+		.fetch_all(pool)
 		.await
-		.unwrap()
-		.get(0)
+		.expect("failed to fetch servers")
 }
 
 pub async fn update(
@@ -28,6 +22,7 @@ pub async fn update(
 			.bind(address)
 			.execute(&mut *transaction)
 			.await?;
+
 		info!("Removing {address} from database due to opt-out");
 		return Ok(());
 	}

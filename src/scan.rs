@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::utils::scan_results;
 use crate::{database, utils};
 use futures_util::future::join_all;
-use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
@@ -27,21 +26,24 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 	info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)");
 
 	loop {
-		let mut servers = database::fetch_servers(&pool).await;
-		let length = database::fetch_count(&pool).await as u64;
+		let servers = database::fetch_servers(&pool).await;
+
+		// Transactions allow adding multiple statements to a single query
+		// This gets shared between tasks such that every server found
+		// is added all at once at the end of the scan
 		let transaction = Arc::new(Mutex::new(
 			pool.begin().await.expect("failed to create transaction"),
 		));
 
-		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
-		let mut handles = Vec::new();
+		let progress_bar =
+			Arc::new(ProgressBar::new(servers.len() as u64).with_style(style.clone()));
+		let mut handles = vec![];
 		let scan_start = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("system time is before the unix epoch")
 			.as_secs();
 
-		// Streams results from the database
-		while let Some(row) = servers.try_next().await.unwrap() {
+		for row in servers {
 			let address = row.get::<String, _>(0);
 
 			(port_start..=port_end).into_iter().for_each(|port| {

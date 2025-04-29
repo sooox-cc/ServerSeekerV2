@@ -4,6 +4,7 @@ use sqlx::PgTransaction;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use thiserror::__private::AsDisplay;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{debug, info, warn};
 
@@ -24,17 +25,19 @@ pub fn scan_results(results: Vec<Result<(), RunError>>) {
 
 	// Print scan errors
 	if !errors.is_empty() {
-		warn!("Scan returned {} errors!", errors.len());
-		let mut counts = [0u32; 4];
+		warn!("Scan returned {} total errors!", errors.len());
+		let mut counts = [0u32; 6];
 		for e in errors {
 			let i: usize = e.into();
 			counts[i] += 1;
 		}
 
-		warn!("{} errors while pinging servers", counts[0]);
-		warn!("{} errors while parsing responses", counts[1]);
-		warn!("{} errors while updating the database", counts[2]);
-		warn!("{} connection timeouts", counts[3]);
+		warn!("{} errors while parsing addresses", counts[0]);
+		warn!("{} I/0 Errors", counts[1]);
+		warn!("{} malformed responses", counts[2]);
+		warn!("{} errors while parsing responses", counts[3]);
+		warn!("{} errors while updating the database", counts[4]);
+		warn!("{} errors while connecting (timeouts)", counts[5]);
 	}
 
 	info!("Commiting {} results to database", results_len - errors_len);
@@ -42,8 +45,12 @@ pub fn scan_results(results: Vec<Result<(), RunError>>) {
 
 #[derive(Debug, Error)]
 pub enum RunError {
-	#[error("Error while pinging server")]
-	PingServer(#[from] ping::PingServerError),
+	#[error("Failed to parse address")]
+	AddressParseError(#[from] std::net::AddrParseError),
+	#[error("I/O error")]
+	IOError(#[from] std::io::Error),
+	#[error("Malformed response")]
+	MalformedResponse,
 	#[error("Error while parsing response")]
 	ParseResponse(#[from] serde_json::Error),
 	#[error("Error while updating database")]
@@ -54,10 +61,12 @@ pub enum RunError {
 impl Into<usize> for RunError {
 	fn into(self) -> usize {
 		match self {
-			Self::PingServer(_) => 0,
-			Self::ParseResponse(_) => 1,
-			Self::DatabaseUpdate(_) => 2,
-			Self::TimedOut(_) => 3,
+			Self::AddressParseError(_) => 0,
+			Self::IOError(_) => 1,
+			Self::MalformedResponse => 2,
+			Self::ParseResponse(_) => 3,
+			Self::DatabaseUpdate(_) => 4,
+			Self::TimedOut(_) => 5,
 		}
 	}
 }
@@ -68,7 +77,7 @@ pub async fn run(
 	progress_bar: Arc<ProgressBar>,
 ) -> Result<(), RunError> {
 	async fn run_inner(
-		host: (String, u16),
+		host: &(String, u16),
 		transaction: Arc<Mutex<PgTransaction<'_>>>,
 	) -> Result<(), RunError> {
 		let permit = PERMITS.acquire().await.unwrap();
@@ -83,7 +92,12 @@ pub async fn run(
 		Ok(())
 	}
 
-	let result = run_inner(host, transaction).await;
+	let result = run_inner(&host, transaction).await;
+
+	if let Err(e) = &result {
+		debug!("{} threw an error: {}", host.0, e)
+	}
+
 	progress_bar.inc(1);
 	result
 }

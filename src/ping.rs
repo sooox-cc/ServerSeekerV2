@@ -1,7 +1,6 @@
-use std::fmt::Debug;
+use crate::utils::RunError;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
-use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -16,17 +15,7 @@ const PAYLOAD: [u8; 9] = [
 	0, // ID
 ];
 
-#[derive(Debug, Error)]
-pub enum PingServerError {
-	#[error("Failed to parse address")]
-	AddressParseError(#[from] std::net::AddrParseError),
-	#[error("I/O error")]
-	IOError(#[from] std::io::Error),
-	#[error("Malformed response")]
-	MalformedResponse,
-}
-
-pub async fn ping_server((address, port): &(String, u16)) -> Result<String, PingServerError> {
+pub async fn ping_server((address, port): &(String, u16)) -> Result<String, RunError> {
 	let socket = SocketAddr::V4(SocketAddrV4::new(
 		Ipv4Addr::from_str(address.as_str())?,
 		*port,
@@ -45,7 +34,7 @@ pub async fn ping_server((address, port): &(String, u16)) -> Result<String, Ping
 	let (varint, length) = decode(&buffer);
 	let bytes_needed = varint + length as usize;
 	if bytes_needed < 3 || total_read > bytes_needed {
-		return Err(PingServerError::MalformedResponse);
+		return Err(RunError::MalformedResponse);
 	}
 
 	let mut output = Vec::with_capacity(bytes_needed);
@@ -59,7 +48,7 @@ pub async fn ping_server((address, port): &(String, u16)) -> Result<String, Ping
 		.await?;
 
 	if output.len() < (length + 1 + json.1).into() {
-		return Err(PingServerError::MalformedResponse);
+		return Err(RunError::MalformedResponse);
 	}
 
 	Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())

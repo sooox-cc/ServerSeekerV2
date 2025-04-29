@@ -1,15 +1,15 @@
 use crate::config::Config;
 use crate::utils;
-use crate::utils::scan_results;
+use crate::utils::handle_scan_results;
+use futures_util::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
-use tokio::task::JoinSet;
-use tracing::{error, info, warn};
+use tokio::task;
+use tracing::{debug, error, info, warn};
 
 #[derive(Deserialize)]
 pub struct Masscan {
@@ -42,6 +42,8 @@ pub fn start_masscan(masscan_config: &str) {
 	info!("Masscan completed");
 }
 
+// TODO: There seems to be a memory allocation crash that I've
+// Narrowed down to here, will need to rewrite this at some point
 pub fn parse_output(masscan_output: &str) -> anyhow::Result<Vec<(String, u16)>> {
 	let file = std::fs::read_to_string(&masscan_output)?;
 	let output = serde_json::from_str::<Vec<Masscan>>(&file)?;
@@ -61,16 +63,13 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 	let masscan_config = config.masscan.config_file.as_str();
 	let masscan_output = config.masscan.output_file.as_str();
 
-	let transaction = Arc::new(Mutex::new(
-		pool.begin().await.expect("failed to create transaction"),
-	));
-
 	if !config.scanner.repeat {
 		warn!("Repeat is not enabled in config file! Will only scan once!");
 	}
 
 	loop {
 		start_masscan(masscan_config);
+
 		let servers = match parse_output(masscan_output) {
 			Ok(servers) => servers,
 			Err(e) => {
@@ -84,20 +83,14 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 		let progress_bar =
 			Arc::new(ProgressBar::new(servers.len() as u64).with_style(style.clone()));
 
-		let mut join_set = JoinSet::new();
+		let mut handles = vec![];
 
 		servers.into_iter().for_each(|(ip, port)| {
-			join_set.spawn(utils::run(
-				(ip, port),
-				transaction.clone(),
-				progress_bar.clone(),
-			));
+			handles.push(task::spawn(utils::run((ip, port), progress_bar.clone())));
 		});
 
-		let results = join_set.join_all().await;
-
-		// Print information about scan
-		scan_results(results);
+		debug!("Joining {} servers", handles.len());
+		handle_scan_results(join_all(handles).await, &pool, style.clone()).await;
 
 		// Quit if only one scan is requested in config
 		if !config.scanner.repeat {

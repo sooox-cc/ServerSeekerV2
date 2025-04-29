@@ -15,11 +15,8 @@ const PAYLOAD: [u8; 9] = [
 	0, // ID
 ];
 
-pub async fn ping_server((address, port): &(String, u16)) -> Result<String, RunError> {
-	let socket = SocketAddr::V4(SocketAddrV4::new(
-		Ipv4Addr::from_str(address.as_str())?,
-		*port,
-	));
+pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunError> {
+	let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(address)?, port));
 
 	// TODO: Rewrite ALL of this below
 	// Connect and create buffer

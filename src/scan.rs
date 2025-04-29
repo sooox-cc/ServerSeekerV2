@@ -1,12 +1,11 @@
 use crate::config::Config;
-use crate::utils::scan_results;
+use crate::utils::handle_scan_results;
 use crate::{database, utils};
 use futures_util::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
 use tokio::task;
 use tracing::{debug, info, warn};
 
@@ -28,13 +27,6 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 	loop {
 		let servers = database::fetch_servers(&pool).await;
 
-		// Transactions allow adding multiple statements to a single query
-		// This gets shared between tasks such that every server found
-		// is added all at once at the end of the scan
-		let transaction = Arc::new(Mutex::new(
-			pool.begin().await.expect("failed to create transaction"),
-		));
-
 		let progress_bar =
 			Arc::new(ProgressBar::new(servers.len() as u64).with_style(style.clone()));
 		let mut handles = vec![];
@@ -48,29 +40,14 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 
 			(port_start..=port_end).into_iter().for_each(|port| {
 				handles.push(task::spawn(utils::run(
-					(address.to_owned(), port),
-					transaction.clone(),
+					(address.clone(), port),
 					progress_bar.clone(),
 				)));
 			});
 		}
 
-		let results = join_all(handles)
-			.await
-			.into_iter()
-			.filter_map(|r| r.ok())
-			.collect::<Vec<_>>();
-
-		// Print information about scan
-		scan_results(results);
-
-		debug!("Attempting to commit results to DB");
-		Arc::try_unwrap(transaction)
-			.unwrap()
-			.into_inner()
-			.commit()
-			.await
-			.expect("error while commiting to database");
+		debug!("Joining {} servers", handles.len());
+		handle_scan_results(join_all(handles).await, &pool, style.clone()).await;
 
 		let scan_end = SystemTime::now()
 			.duration_since(UNIX_EPOCH)

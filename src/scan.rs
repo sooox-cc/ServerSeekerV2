@@ -1,14 +1,14 @@
 use crate::config::Config;
 use crate::utils::scan_results;
-use crate::{database, ping, utils};
+use crate::{database, utils};
+use futures_util::future::join_all;
 use futures_util::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use thiserror::Error;
 use tokio::sync::Mutex;
-use tokio::task::JoinSet;
+use tokio::task;
 use tracing::{info, warn};
 
 pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
@@ -34,7 +34,7 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 		));
 
 		let progress_bar = Arc::new(ProgressBar::new(length).with_style(style.clone()));
-		let mut ping_set = JoinSet::new();
+		let mut handles = Vec::new();
 		let scan_start = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("system time is before the unix epoch")
@@ -42,18 +42,22 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 
 		// Streams results from the database
 		while let Some(row) = servers.try_next().await.unwrap() {
-			let address: String = row.get(0);
+			let address = row.get::<String, _>(0);
 
-			for port in port_start..=port_end {
-				ping_set.spawn(utils::run(
+			(port_start..=port_end).into_iter().for_each(|port| {
+				handles.push(task::spawn(utils::run(
 					(address.to_owned(), port),
 					transaction.clone(),
 					progress_bar.clone(),
-				));
-			}
+				)));
+			});
 		}
 
-		let results = ping_set.join_all().await;
+		let results = join_all(handles)
+			.await
+			.into_iter()
+			.filter_map(|r| r.ok())
+			.collect::<Vec<_>>();
 
 		// Print information about scan
 		scan_results(results);
@@ -85,28 +89,6 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 				config.scanner.scan_delay
 			);
 			tokio::time::sleep(Duration::from_secs(config.scanner.scan_delay)).await;
-		}
-	}
-}
-
-#[derive(Debug, Error)]
-pub enum RunError {
-	#[error("Error while pinging server")]
-	PingServer(#[from] ping::PingServerError),
-	#[error("Error while parsing response")]
-	ParseResponse(#[from] serde_json::Error),
-	#[error("Error while updating database")]
-	DatabaseUpdate(#[from] sqlx::Error),
-	#[error("Connection timed out")]
-	TimedOut(#[from] tokio::time::error::Elapsed),
-}
-impl Into<usize> for RunError {
-	fn into(self) -> usize {
-		match self {
-			Self::PingServer(_) => 0,
-			Self::ParseResponse(_) => 1,
-			Self::DatabaseUpdate(_) => 2,
-			Self::TimedOut(_) => 3,
 		}
 	}
 }

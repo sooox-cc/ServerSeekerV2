@@ -26,19 +26,19 @@ pub enum PingServerError {
 	MalformedResponse,
 }
 
-pub async fn ping_server(host: &(String, u16)) -> Result<String, PingServerError> {
+pub async fn ping_server((address, port): &(String, u16)) -> Result<String, PingServerError> {
 	let socket = SocketAddr::V4(SocketAddrV4::new(
-		Ipv4Addr::from_str(host.0.as_str())?,
-		host.1,
+		Ipv4Addr::from_str(address.as_str())?,
+		*port,
 	));
 
+	// TODO: Rewrite ALL of this below
 	// Connect and create buffer
 	let mut stream = TcpStream::connect(&socket).await?;
 	let mut buffer = [0; 1024];
 
 	// Send payload
 	stream.write_all(&PAYLOAD).await?;
-	// TODO: figure out why a good half of servers are timing out here
 	let total_read = stream.read(&mut buffer).await?;
 
 	// Decode

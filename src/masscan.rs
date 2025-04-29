@@ -69,7 +69,6 @@ pub async fn start(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 	}
 
 	loop {
-		// TODO: Config changes needed here
 		start_masscan(masscan_config);
 		let servers = match parse_output(masscan_output) {
 			Ok(servers) => servers,

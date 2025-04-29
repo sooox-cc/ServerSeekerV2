@@ -1,12 +1,14 @@
-use crate::scan::RunError;
 use crate::{database, ping, response};
 use indicatif::ProgressBar;
 use sqlx::PgTransaction;
 use std::sync::Arc;
+use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::{info, warn};
 
 static PERMITS: Semaphore = Semaphore::const_new(2000);
+const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
 pub fn scan_results(results: Vec<Result<(), RunError>>) {
 	let results_len = results.len();
@@ -37,6 +39,28 @@ pub fn scan_results(results: Vec<Result<(), RunError>>) {
 	info!("Commiting {} results to database", results_len - errors_len);
 }
 
+#[derive(Debug, Error)]
+pub enum RunError {
+	#[error("Error while pinging server")]
+	PingServer(#[from] ping::PingServerError),
+	#[error("Error while parsing response")]
+	ParseResponse(#[from] serde_json::Error),
+	#[error("Error while updating database")]
+	DatabaseUpdate(#[from] sqlx::Error),
+	#[error("Connection timed out")]
+	TimedOut(#[from] tokio::time::error::Elapsed),
+}
+impl Into<usize> for RunError {
+	fn into(self) -> usize {
+		match self {
+			Self::PingServer(_) => 0,
+			Self::ParseResponse(_) => 1,
+			Self::DatabaseUpdate(_) => 2,
+			Self::TimedOut(_) => 3,
+		}
+	}
+}
+
 pub async fn run(
 	host: (String, u16),
 	transaction: Arc<Mutex<PgTransaction<'_>>>,
@@ -47,7 +71,7 @@ pub async fn run(
 		transaction: Arc<Mutex<PgTransaction<'_>>>,
 	) -> Result<(), RunError> {
 		let permit = PERMITS.acquire().await.unwrap();
-		let results = tokio::time::timeout(crate::TIMEOUT_SECS, ping::ping_server(&host)).await??;
+		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(&host)).await??;
 		drop(permit);
 
 		let response = response::parse_response(results)?;

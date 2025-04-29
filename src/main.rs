@@ -9,16 +9,12 @@ mod utils;
 use config::load_config;
 use indicatif::ProgressStyle;
 use sqlx::PgPool;
-use std::time::Duration;
 use tracing::error;
 
 enum Mode {
 	Discovery,
 	Rescan,
 }
-
-// TODO: add to config file
-const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
 #[tokio::main]
 async fn main() {

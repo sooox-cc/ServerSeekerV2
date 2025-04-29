@@ -30,6 +30,7 @@ pub fn start_masscan(masscan_config: &str) {
 			.spawn()
 			.expect("failed to execute process")
 	} else {
+		// TODO: Find a safer way to do sudo
 		Command::new("sudo")
 			.args(["masscan", "-c", masscan_config])
 			.spawn()

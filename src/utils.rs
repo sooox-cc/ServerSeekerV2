@@ -5,13 +5,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{Mutex, Semaphore};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 static PERMITS: Semaphore = Semaphore::const_new(2000);
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
 
 pub fn scan_results(results: Vec<Result<(), RunError>>) {
 	let results_len = results.len();
+	debug!("results_len = {}", results_len);
 
 	// Save all errors for statistics
 	let errors = results
@@ -75,6 +76,7 @@ pub async fn run(
 		drop(permit);
 
 		let response = response::parse_response(results)?;
+		debug!("Server {} responded with a valid ping", &host.0);
 
 		database::update(response, &host, &mut *transaction.lock().await).await?;
 

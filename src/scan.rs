@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::task;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: ProgressStyle) {
 	let port_start = config.scanner.port_range_start;
@@ -62,6 +62,7 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 		// Print information about scan
 		scan_results(results);
 
+		debug!("Attempting to commit results to DB");
 		Arc::try_unwrap(transaction)
 			.unwrap()
 			.into_inner()

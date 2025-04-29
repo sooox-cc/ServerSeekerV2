@@ -43,7 +43,7 @@ pub async fn update(
 	let description: String = match server.description {
 		Some(description) => description.into(),
 		None => {
-			debug!("{address}: Missing MOTD");
+			debug!("Server {address} failed while updating database: Missing MOTD");
 			return Ok(());
 		}
 	};

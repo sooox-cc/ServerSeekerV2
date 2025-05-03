@@ -1,7 +1,9 @@
 use crate::config::PlayerTracking;
 use serde::Deserialize;
+use serde_json::Value;
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::Type)]
+#[sqlx(type_name = "software")]
 pub enum ServerType {
 	Java,
 	Neoforge,
@@ -24,7 +26,7 @@ pub struct Server {
 	pub version: Version,
 	pub favicon: Option<String>,
 	pub players: Players,
-	pub description: Option<Description>,
+	pub description: Option<Value>,
 	#[serde(rename = "preventsChatReports")]
 	pub prevents_reports: Option<bool>,
 	#[serde(rename = "enforcesSecureChat")]
@@ -126,12 +128,12 @@ impl Server {
 	}
 
 	// Has the user opted out of scanning?
-	pub fn check_opt_out(&self) -> bool {
-		match &self.description {
-			Some(description) => String::from(description.clone()).contains("§b§d§f§d§b"),
-			None => false,
-		}
-	}
+	// pub fn check_opt_out(&self) -> bool {
+	// 	match &self.description {
+	// 		Some(description) => String::from(description.clone()).contains("§b§d§f§d§b"),
+	// 		None => false,
+	// 	}
+	// }
 }
 
 impl Players {

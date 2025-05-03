@@ -72,8 +72,6 @@ pub async fn handle_scan_results(
 		.commit()
 		.await
 		.expect("error while commiting to database");
-
-	info!("Commiting {} results to database", results_len - errors_len);
 }
 
 #[derive(Debug, Error)]

@@ -3,6 +3,7 @@ use crate::utils::handle_scan_results;
 use crate::{database, utils};
 use futures_util::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
+use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -36,7 +37,7 @@ pub async fn rescan_servers(pool: Pool<Postgres>, config: Config, style: Progres
 			.as_secs();
 
 		for row in servers {
-			let address = row.get::<String, _>(0);
+			let address = row.get::<IpNet, _>(0).addr().to_string();
 
 			(port_start..=port_end).into_iter().for_each(|port| {
 				handles.push(task::spawn(utils::run(

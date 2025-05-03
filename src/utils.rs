@@ -40,7 +40,7 @@ pub async fn handle_scan_results(
 		warn!("{} I/0 Errors", counts[1]);
 		warn!("{} malformed responses", counts[2]);
 		warn!("{} errors while parsing responses", counts[3]);
-		warn!("{} errors while connecting (timeouts)", counts[4]);
+		warn!("{} servers timed out", counts[4]);
 	}
 
 	// Transactions allow adding multiple statements to a single query
@@ -53,8 +53,7 @@ pub async fn handle_scan_results(
 		.filter_map(Result::ok)
 		.collect::<Vec<_>>();
 
-	info!("Attempting to commit results to DB, This could take a really long time");
-
+	info!("Commiting results to database...");
 	let bar = ProgressBar::new(completed_servers.len() as u64).with_style(style);
 
 	for server in completed_servers.into_iter().progress_with(bar) {

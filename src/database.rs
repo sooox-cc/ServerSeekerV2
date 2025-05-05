@@ -10,7 +10,7 @@ pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
 	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC")
 		.fetch_all(pool)
 		.await
-		.expect("failed to fetch servers")
+		.expect("failed to fetch servers from database")
 }
 
 pub async fn update(
@@ -23,6 +23,10 @@ pub async fn update(
 	let address = IpNet::from_str((address.to_owned() + "/32").as_str())?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
+	// description_raw is for storing raw JSON descriptions
+	// useful for applications that want to parse descriptions in their own way
+	// description_formatted is for pre-formatted descriptions
+	// useful for regex searches and for applications that just quickly need a servers description
 	sqlx::query(
 		"INSERT INTO servers (
 		address,
@@ -31,7 +35,7 @@ pub async fn update(
         version,
 		protocol,
 		icon,
-		description,
+		description_raw,
 		prevents_chat_reports,
 		enforces_secure_chat,
 		first_seen,
@@ -43,7 +47,7 @@ pub async fn update(
     	version = EXCLUDED.version,
     	protocol = EXCLUDED.protocol,
     	icon = EXCLUDED.icon,
-    	description = EXCLUDED.description,
+    	description_raw = EXCLUDED.description_raw,
     	prevents_chat_reports = EXCLUDED.prevents_chat_reports,
     	enforces_secure_chat = EXCLUDED.enforces_secure_chat,
     	last_seen = EXCLUDED.last_seen,

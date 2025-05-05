@@ -17,6 +17,7 @@ sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "ipnet", "uui
 indicatif = { version = "0.17" }
 futures-util = "0.3"
 anyhow = "1.0.98"
+clap = { version = "4.5.37", features = ["derive"] }
 
 [profile.release]
 strip = true

@@ -6,22 +6,42 @@ mod response;
 mod scan;
 mod utils;
 
+use crate::Mode::{Discovery, Rescanner};
+use clap::Parser;
 use config::load_config;
 use indicatif::ProgressStyle;
 use sqlx::PgPool;
 use tracing::error;
 
+#[derive(clap::ValueEnum, Clone, Debug)]
 enum Mode {
+	// TODO! Alternate mode: Run masscan, then rescan
 	Discovery,
-	Rescan,
+	Rescanner,
+}
+
+#[derive(Parser, Debug)]
+#[clap(about = "Scans the internet for minecraft servers and indexes them")]
+#[clap(rename_all = "kebab-case")]
+struct Args {
+	#[clap(help = "Specifies the mode to run (Default: discovery)")]
+	#[clap(default_value = "rescanner")]
+	#[clap(long)]
+	mode: Mode,
+
+	#[clap(help = "Specifies the location of the config file")]
+	#[clap(default_value = "config.toml")]
+	#[clap(long)]
+	config_file: String,
 }
 
 #[tokio::main]
 async fn main() {
 	tracing_subscriber::fmt::init();
 
-	let config_file = std::env::args().nth(1).unwrap_or("config.toml".to_string());
-	let config = load_config(config_file);
+	let arguments = Args::parse();
+	println!("{:?}", arguments);
+	let config = load_config(arguments.config_file);
 
 	// Create database URL
 	let database_url = format!(
@@ -47,11 +67,8 @@ async fn main() {
 	.unwrap()
 	.progress_chars("=>-");
 
-	// TODO: CLI arguments for this
-	let mode = Mode::Rescan;
-
-	match mode {
-		Mode::Discovery => masscan::start(pool, config, style).await,
-		Mode::Rescan => scan::rescan_servers(pool, config, style).await,
+	match arguments.mode {
+		Discovery => masscan::start(pool, config, style).await,
+		Rescanner => scan::rescan_servers(pool, config, style).await,
 	}
 }

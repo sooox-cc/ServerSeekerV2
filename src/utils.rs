@@ -53,7 +53,10 @@ pub async fn handle_scan_results(
 		.filter_map(Result::ok)
 		.collect::<Vec<_>>();
 
-	info!("Commiting results to database...");
+	info!(
+		"Commiting {} servers to database...",
+		completed_servers.len()
+	);
 	let bar = ProgressBar::new(completed_servers.len() as u64).with_style(style);
 
 	for server in completed_servers.into_iter().progress_with(bar) {

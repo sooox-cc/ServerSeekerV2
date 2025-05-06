@@ -53,20 +53,10 @@ async fn main() {
 
 	info!("Using config file: {}", arguments.config_file);
 
-	// Create database URL
-	let database_url = format!(
-		"postgresql://{}:{}@{}:{}/{}",
-		config.database.user,
-		config.database.password,
-		config.database.url,
-		config.database.port,
-		config.database.table
-	);
-
 	let options = PgConnectOptions::new()
 		.username(&config.database.user)
 		.password(&config.database.password)
-		.host(&config.database.url)
+		.host(&config.database.host)
 		.port(config.database.port)
 		.database(&config.database.table)
 		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));

@@ -16,7 +16,7 @@ players = [""]
 
 [database]
 # Database URL
-url = "database.yourdomain.xyz"
+host = "database.yourdomain.xyz"
 # Database port
 port = 5432
 # Database table

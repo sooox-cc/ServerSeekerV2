@@ -14,7 +14,7 @@ pub struct Config {
 
 #[derive(Deserialize)]
 pub struct Database {
-	pub url: String,
+	pub host: String,
 	pub port: u16,
 	pub table: String,
 	pub user: String,

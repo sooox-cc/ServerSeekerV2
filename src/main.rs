@@ -9,7 +9,11 @@ mod utils;
 use clap::Parser;
 use config::load_config;
 use indicatif::ProgressStyle;
-use sqlx::PgPool;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::ConnectOptions;
+use std::str::FromStr;
+use std::time::Duration;
+use tracing::log::LevelFilter;
 use tracing::{error, info};
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -40,15 +44,14 @@ async fn main() {
 
 	let arguments = Args::parse();
 	let config = match load_config(&arguments.config_file) {
-		Ok(config) => {
-			info!("Using config file: {}", arguments.config_file);
-			config
-		}
+		Ok(config) => config,
 		Err(e) => {
 			error!("Fatal error loading config file: ({})", e);
 			std::process::exit(1);
 		}
 	};
+
+	info!("Using config file: {}", arguments.config_file);
 
 	// Create database URL
 	let database_url = format!(
@@ -60,7 +63,19 @@ async fn main() {
 		config.database.table
 	);
 
-	let pool = match PgPool::connect(&database_url).await {
+	let options = PgConnectOptions::new()
+		.username(&config.database.user)
+		.password(&config.database.password)
+		.host(&config.database.url)
+		.port(config.database.port)
+		.database(&config.database.table)
+		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
+
+	let pool = match PgPoolOptions::new()
+		.min_connections(5)
+		.connect_with(options)
+		.await
+	{
 		Ok(pool) => pool,
 		Err(e) => {
 			error!("Failed to connect to database: {e}");

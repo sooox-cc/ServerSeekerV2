@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::cmp::max;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
-use tracing::{error, info};
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -66,19 +66,9 @@ impl Scanner {
 	}
 }
 
-pub fn load_config(path: String) -> Config {
-	let mut file = match File::open(&path) {
-		Ok(file) => file,
-		Err(error) => match error.kind() {
-			ErrorKind::NotFound => panic!("{} not found!", &path),
-			ErrorKind::PermissionDenied => panic!("File permissions invalid for {}!", &path),
-			_ => panic!("Unknown config error!"),
-		},
-	};
-
+pub fn load_config(path: &str) -> Result<Config, std::io::Error> {
+	let mut file = File::open(path)?;
 	let mut contents = String::new();
 	file.read_to_string(&mut contents).unwrap_or_default();
-
-	info!("Using config file {path}");
-	toml::from_str(&contents).expect("Failed to parse config!")
+	toml::from_str(&contents).map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e))
 }

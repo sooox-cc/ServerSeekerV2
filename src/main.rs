@@ -6,12 +6,11 @@ mod response;
 mod scan;
 mod utils;
 
-use crate::Mode::{Discovery, Rescanner};
 use clap::Parser;
 use config::load_config;
 use indicatif::ProgressStyle;
 use sqlx::PgPool;
-use tracing::error;
+use tracing::{error, info};
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum Mode {
@@ -26,12 +25,12 @@ enum Mode {
 struct Args {
 	#[clap(help = "Specifies the mode to run (Default: discovery)")]
 	#[clap(default_value = "rescanner")]
-	#[clap(long)]
+	#[clap(long, short = 'd')]
 	mode: Mode,
 
 	#[clap(help = "Specifies the location of the config file")]
 	#[clap(default_value = "config.toml")]
-	#[clap(long)]
+	#[clap(long, short = 'c')]
 	config_file: String,
 }
 
@@ -40,8 +39,16 @@ async fn main() {
 	tracing_subscriber::fmt::init();
 
 	let arguments = Args::parse();
-	println!("{:?}", arguments);
-	let config = load_config(arguments.config_file);
+	let config = match load_config(&arguments.config_file) {
+		Ok(config) => {
+			info!("Using config file: {}", arguments.config_file);
+			config
+		}
+		Err(e) => {
+			error!("Fatal error loading config file: ({})", e);
+			std::process::exit(1);
+		}
+	};
 
 	// Create database URL
 	let database_url = format!(
@@ -68,7 +75,7 @@ async fn main() {
 	.progress_chars("=>-");
 
 	match arguments.mode {
-		Discovery => masscan::start(pool, config, style).await,
-		Rescanner => scan::rescan_servers(pool, config, style).await,
+		Mode::Discovery => masscan::start(pool, config, style).await,
+		Mode::Rescanner => scan::rescan_servers(pool, config, style).await,
 	}
 }

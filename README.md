@@ -1,4 +1,8 @@
-
+[![Forgejo](https://img.shields.io/badge/forgejo-%23F2712B.svg?style=for-the-badge&logo=forgejo&logoColor=white)](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-%234169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Rust](https://img.shields.io/badge/Rust-red?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+[![Forgejo Last Commit](https://img.shields.io/gitea/last-commit/ServerSeekerV2/ServerSeekerV2?gitea_url=https%3A%2F%2Fgit.funtimes909.xyz%2F&style=for-the-badge&logo=forgejo)](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2)
+[![AUR Maintainer](https://img.shields.io/aur/maintainer/serverseekerv2-git?style=for-the-badge&logo=archlinux&label=aur%20maintainer)](https://aur.archlinux.org/packages/serverseekerv2-git)
 <br/>
 <div align="center">
 <a href="https://github.com/ShaanCoding/ReadME-Generator">
@@ -13,7 +17,7 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 <br/>
 <br/>
   
-<a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Report Bug .</a>
+<a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Report Bug</a> -
 <a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Request Feature</a>
 </p>
 </div>

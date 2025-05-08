@@ -18,6 +18,7 @@ pub enum ServerType {
 	Leaves,
 	Waterfall,
 	Bungeecord,
+	Thermos,
 }
 
 #[allow(dead_code)]

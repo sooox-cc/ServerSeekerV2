@@ -1,8 +1,8 @@
-[rescanner]
+[scanner]
 # Repeat after a scan is complete?
 repeat = true
 # How long to wait before starting another scan in seconds
-rescan_delay = 60
+scan_delay = 60
 # Start of port range
 port_range_start = 25565
 # End of port range
@@ -13,6 +13,12 @@ port_range_end = 25565
 enabled = false
 # List of players to track
 players = [""]
+
+[masscan]
+# Location of masscans config file
+config_file = "masscan.conf"
+# Masscan output location
+output_file = "servers.json"
 
 [database]
 # Database URL

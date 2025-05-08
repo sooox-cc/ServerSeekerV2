@@ -46,7 +46,7 @@ async fn main() {
 	let config = match load_config(&arguments.config_file) {
 		Ok(config) => config,
 		Err(e) => {
-			error!("Fatal error loading config file: ({})", e);
+			error!("Fatal error loading config file: {}", e);
 			std::process::exit(1);
 		}
 	};

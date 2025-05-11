@@ -11,7 +11,6 @@ use config::load_config;
 use indicatif::ProgressStyle;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::ConnectOptions;
-use std::str::FromStr;
 use std::time::Duration;
 use tracing::log::LevelFilter;
 use tracing::{error, info};
@@ -27,9 +26,9 @@ enum Mode {
 #[clap(about = "Scans the internet for minecraft servers and indexes them")]
 #[clap(rename_all = "kebab-case")]
 struct Args {
-	#[clap(help = "Specifies the mode to run (Default: discovery)")]
+	#[clap(help = "Specifies the mode to run")]
 	#[clap(default_value = "rescanner")]
-	#[clap(long, short = 'd')]
+	#[clap(long, short = 'm')]
 	mode: Mode,
 
 	#[clap(help = "Specifies the location of the config file")]
@@ -62,7 +61,7 @@ async fn main() {
 		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
 
 	let pool = match PgPoolOptions::new()
-		.min_connections(5)
+		// .min_connections(5)
 		.connect_with(options)
 		.await
 	{

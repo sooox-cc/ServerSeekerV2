@@ -1,5 +1,5 @@
 use crate::config::PlayerTracking;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, sqlx::Type)]
@@ -22,7 +22,7 @@ pub enum ServerType {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Server {
 	pub version: Version,
 	pub favicon: Option<String>,
@@ -39,14 +39,14 @@ pub struct Server {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Version {
 	pub name: String,
 	pub protocol: i32,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum Description {
 	Plain(String),
@@ -54,7 +54,7 @@ pub enum Description {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct DescriptionComplex {
 	pub text: Option<String>,
 	pub color: Option<String>,
@@ -72,7 +72,7 @@ pub struct DescriptionComplex {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Players {
 	pub max: i32,
 	pub online: i32,
@@ -80,20 +80,20 @@ pub struct Players {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Player {
 	pub id: String,
 	pub name: String,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct ForgeData {
 	pub mods: Vec<Mod>,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Mod {
 	#[serde(rename = "modId")]
 	pub id: String,

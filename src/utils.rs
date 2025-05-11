@@ -60,13 +60,15 @@ pub async fn handle_scan_results(
 	let bar = ProgressBar::new(completed_servers.len() as u64).with_style(style);
 
 	for server in completed_servers.into_iter().progress_with(bar) {
-		database::update(
+		if let Err(e) = database::update(
 			server.server,
 			&(server.ip, server.port),
 			&mut *transaction.lock().await,
 		)
 		.await
-		.unwrap();
+		{
+			warn!("Failed to update database: {}", e);
+		}
 	}
 
 	Arc::try_unwrap(transaction)

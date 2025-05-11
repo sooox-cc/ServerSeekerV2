@@ -5,6 +5,7 @@ mod ping;
 mod response;
 mod scan;
 mod utils;
+mod warner;
 
 use clap::Parser;
 use config::load_config;
@@ -58,13 +59,10 @@ async fn main() {
 		.host(&config.database.host)
 		.port(config.database.port)
 		.database(&config.database.table)
+		// Turn off slow statement logging, this clogs the console
 		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
 
-	let pool = match PgPoolOptions::new()
-		// .min_connections(5)
-		.connect_with(options)
-		.await
-	{
+	let pool = match PgPoolOptions::new().connect_with(options).await {
 		Ok(pool) => pool,
 		Err(e) => {
 			error!("Failed to connect to database: {e}");

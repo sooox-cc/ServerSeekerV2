@@ -1,4 +1,6 @@
 use crate::response::Server;
+#[cfg(feature = "warner")]
+use crate::warner::join_server;
 use crate::{database, ping, response};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use sqlx::{Pool, Postgres};
@@ -121,6 +123,8 @@ pub async fn run(
 		drop(permit);
 
 		let response = response::parse_response(results)?;
+
+		let _ = join_server(host.0).await;
 
 		Ok(CompletedServer {
 			ip: host.0.to_string(),

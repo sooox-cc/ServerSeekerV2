@@ -16,7 +16,7 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 <a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/wiki"><strong>Explore the docs »</strong></a>
 <br/>
 <br/>
-  
+
 <a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Report Bug</a> -
 <a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Request Feature</a>
 </p>
@@ -26,40 +26,92 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 
 ![ServerSeekerV2 Scanning Servers](https://files.nucceteere.xyz/assets/SSV2.png)
 
-ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features. ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
+ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features.
+ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
+
+# For people just looking to not be scanned anymore
+
+You can add "§b§d§f§d§b" anywhere to your servers description by changing the ``server.properties`` file. This change is
+invisible to the client and won't change the look of your servers description *in most cases.*
+
+If you add mods that change the way your server formats it's status responses (Such as MiniMOTD), it may not work. You
+can add this string anywhere in the servers description. This will stop all join attempts from SSV2 on your server as
+long as that is
+in the servers description, and you won't be added to the database.
+
+Additionally having this in your servers description **Will remove you from the database as well** if you were
+previously scanned. The
+next time your server is found, it will automatically remove it from the database. Easy!
+
+If something is wrong, or you're still being scanned after adding the above string to your servers description join
+my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@me:funtimes909.xyz`` directly.
+
+## FAQ
+
+- Q: What is this?
+- A: ServerSeekerV2 is a faster version of the original ServerSeeker, it pings around 4 billion IPv4 addresses every few
+  hours and attempts to join Minecraft servers on the ones that respond. This process is repeated over and over again.
+
+- Q: How can I get my server removed?
+- A: See above method or join my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and ping
+  ``@me:funtimes909.xyz``.
+
+- Q: I have a dynamic IP address, how can I get my server removed?
+- A: I can't remove your IP address every time it changes, you will have to rely on using the MOTD method described
+  above or use something like NFTables or UFW to block connections from my IP address
+
+- Q: How can I protect my server?
+- A: Enable a whitelist for your server, a whitelist allows only specified players to join your server, run
+  ``/whitelist on`` and then ``/whitelist add <player>`` for every player that will join your server. Additionally,
+  setting "online-mode" to true in the ``server.properties`` file helps a lot by enforcing that every player must own a
+  copy of the game
+
+
+- Q: Why?
+- A: As mentioned above, the previous owner of the original ServerSeeker, sold it to a third party, that got the discord
+  bot and server terminated within a month of the sale. At the time I was looking for a project to sink my
+  endless amounts of free time into, so shortly after the sale, I started developing this :)
+
+## Related projects
+
+- [Discord Bot](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-Discord-Bot)
+- [PyAPI](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
+
 ### Built With
 
 - [Rust](https://www.rust-lang.org/)
 - [tokio](https://crates.io/crates/tokio)
 - [sqlx](https://crates.io/crates/sqlx)
 - [serde](https://crates.io/crates/serde)
+
 ### Installation
 
 Download the executable from the Releases tab. (Soon)
+
 ## Usage
 
-1. Copy the [example config file](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/src/branch/main/config-example.toml) and fill out the information
+1. Copy
+   the [example config file](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/src/branch/main/config-example.toml)
+   and fill out the information
 2. Set the right permissions
    ```sh
-   chmod +x ./ServerSeekerV2-Rust
+   chmod +x ./ServerSeekerV2
    ```
 3. Run the scanner
    ```sh
-   ./ServerSeekerV2-Rust
+   ./ServerSeekerV2
    ```
 4. Enjoy
 
 WARNING: Do not run this at home, it will melt your home network and your ISP will be angry at you.
-## Roadmap
 
-Soon.
-
-See the [open issues](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues) for a full list of proposed features (and known issues).
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any
+contributions you make are **greatly appreciated**.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also
+simply open an issue with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!
 
 1. Fork the Project
@@ -67,11 +119,7 @@ Don't forget to give the project a star! Thanks again!
 3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
 ## License
 
 Distributed under the GPLv3 License. See [GPLv3 License](https://opensource.org/license/gpl-3-0) for more information.
-## Contact
-
-Your Name - [@me:funtimes909.xyz](https://matrix.to/#/@me:funtimes909.xyz)
-
-Project Link: [Funtimes909 Forgejo](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2)

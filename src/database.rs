@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address FROM servers ORDER BY last_seen DESC LIMIT 300")
+	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC")
 		.fetch_all(pool)
 		.await
 		.expect("failed to fetch servers from database")

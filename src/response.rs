@@ -107,7 +107,7 @@ impl Server {
 		}
 	}
 
-    #[rustfmt::skip]
+	#[rustfmt::skip]
 	pub fn build_server_description(&self, value: &Value) -> String {
 		let mut output = String::new();
 
@@ -160,12 +160,16 @@ impl Server {
 				// using it to format incorrectly unless we specifically add the text AFTER
 				// all other format codes but BEFORE the extra field
 				if object.contains_key("text") {
-					let text = object.get("text").unwrap();
-					output.push_str(text.as_str().unwrap());
+					if let Some(text) = object.get("text") {
+						if let Some(text) = text.as_str() {
+							output.push_str(text);
+						}
+					}
 				}
+
 				if object.contains_key("extra") {
 					if let Some(extra) = object.get("extra") {
-					output.push_str(&self.build_server_description(extra));
+						output.push_str(&self.build_server_description(extra));
 					}
 				}
 			}

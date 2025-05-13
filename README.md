@@ -29,19 +29,27 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features.
 ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
 
+## Features
+
+- Rescanning. SSV2 Can rescan already found servers for the most up-to-date results (updates every few minutes)
+- Performance. SSV2 is significantly faster than the original ServerSeeker.
+- Open Source. Unlike the original, SSV2 and all it's related projects are fully open source.
+- Advanced MOTD Parsing. Weather a servers description is really complex and has lots of formatting or a simple string,
+  it will be built into a string with Minecraft style text formatting codes applied in place. both raw descriptions and
+  formatted descriptions are saved in the database.
+- Automatic opting out. Unlike the original ServerSeeker where you had to join a discord server and request your server
+  be removed. You can automatically remove yourself from the database and prevent further scans by modifying your
+  servers MOTD.
+- Self Hostable. Host your own scanning instance and find your own servers! (See below for warnings against running this
+  on a residential network)
+
 # For people just looking to not be scanned anymore
 
-You can add "§b§d§f§d§b" anywhere to your servers description by changing the ``server.properties`` file. This change is
-invisible to the client and won't change the look of your servers description *in most cases.*
-
-If you add mods that change the way your server formats it's status responses (Such as MiniMOTD), it may not work. You
-can add this string anywhere in the servers description. This will stop all join attempts from SSV2 on your server as
-long as that is
-in the servers description, and you won't be added to the database.
+You can add "§b§d§f§d§b" to the end of your servers description by changing the ``server.properties`` file. This change
+is invisible to the client and won't change the look of your servers description *in most cases.*
 
 Additionally having this in your servers description **Will remove you from the database as well** if you were
-previously scanned. The
-next time your server is found, it will automatically remove it from the database. Easy!
+previously scanned. The next time your server is found, it will automatically remove it from the database. Easy!
 
 If something is wrong, or you're still being scanned after adding the above string to your servers description join
 my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@me:funtimes909.xyz`` directly.
@@ -64,8 +72,7 @@ my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@
 - A: Enable a whitelist for your server, a whitelist allows only specified players to join your server, run
   ``/whitelist on`` and then ``/whitelist add <player>`` for every player that will join your server. Additionally,
   setting "online-mode" to true in the ``server.properties`` file helps a lot by enforcing that every player must own a
-  copy of the game
-
+  copy of the game.
 
 - Q: Why?
 - A: As mentioned above, the previous owner of the original ServerSeeker, sold it to a third party, that got the discord
@@ -75,16 +82,19 @@ my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@
 ## Related projects
 
 - [Discord Bot](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-Discord-Bot)
-- [PyAPI](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
+- [API](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
 
 ### Built With
 
-- [Rust](https://www.rust-lang.org/)
+- [rust](https://www.rust-lang.org/)
 - [tokio](https://crates.io/crates/tokio)
 - [sqlx](https://crates.io/crates/sqlx)
 - [serde](https://crates.io/crates/serde)
 
 ### Installation
+
+**Warning: You definitely should not run this at home or from a residental network, that is a very easy way to make your
+Internet Service Provider very angry at you and potentially terminate your contract**
 
 Download the executable from the Releases tab. (Soon)
 
@@ -103,9 +113,10 @@ Download the executable from the Releases tab. (Soon)
    ```
 4. Enjoy
 
-WARNING: Do not run this at home, it will melt your home network and your ISP will be angry at you.
-
 ## Contributing
+
+**ServerSeekerV2 uses nightly rust**
+Please run `rustup override set nightly` in the project directory after you clone it to run it
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any
 contributions you make are **greatly appreciated**.

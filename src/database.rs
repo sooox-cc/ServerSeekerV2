@@ -1,13 +1,15 @@
 use crate::response::Server;
+use crate::utils;
 use sqlx::postgres::PgRow;
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
 use sqlx::{PgConnection, Pool, Postgres};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::info;
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC")
+	sqlx::query("SELECT address FROM servers ORDER BY last_seen DESC LIMIT 300")
 		.fetch_all(pool)
 		.await
 		.expect("failed to fetch servers from database")
@@ -19,9 +21,27 @@ pub async fn update(
 	transaction: &mut PgConnection,
 ) -> anyhow::Result<()> {
 	let port = *port as i32;
+
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
 	let address = IpNet::from_str((address.to_owned() + "/32").as_str())?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
+
+	// Handle server descriptions
+	let description_raw = server
+		.description_raw
+		.as_ref()
+		.ok_or(utils::RunError::MalformedResponse)?;
+	let description_formatted = server.build_server_description(description_raw);
+
+	if server.check_opt_out() {
+		info!("Removing {} from the database due to opt out!", address);
+		sqlx::query("DELETE FROM servers WHERE address = $1")
+			.bind(address)
+			.execute(transaction)
+			.await?;
+
+		return Err(utils::RunError::ServerOptOut)?;
+	}
 
 	// description_raw is for storing raw JSON descriptions
 	// useful for applications that want to parse descriptions in their own way
@@ -36,18 +56,20 @@ pub async fn update(
 		protocol,
 		icon,
 		description_raw,
+        description_formatted,
 		prevents_chat_reports,
 		enforces_secure_chat,
 		first_seen,
 		last_seen,
 		online_players,
-		max_players) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		max_players) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     	ON CONFLICT (address, port) DO UPDATE SET
     	software = EXCLUDED.software,
     	version = EXCLUDED.version,
     	protocol = EXCLUDED.protocol,
     	icon = EXCLUDED.icon,
     	description_raw = EXCLUDED.description_raw,
+    	description_formatted = EXCLUDED.description_formatted,
     	prevents_chat_reports = EXCLUDED.prevents_chat_reports,
     	enforces_secure_chat = EXCLUDED.enforces_secure_chat,
     	last_seen = EXCLUDED.last_seen,
@@ -60,7 +82,8 @@ pub async fn update(
 	.bind(server.version.name)
 	.bind(server.version.protocol)
 	.bind(server.favicon)
-	.bind(server.description)
+	.bind(description_raw)
+	.bind(description_formatted)
 	.bind(server.prevents_reports)
 	.bind(server.enforces_secure_chat)
 	.bind(timestamp)

@@ -1,4 +1,5 @@
 use crate::config::PlayerTracking;
+use crate::utils::MinecraftColorCodes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -27,7 +28,9 @@ pub struct Server {
 	pub version: Version,
 	pub favicon: Option<String>,
 	pub players: Players,
-	pub description: Option<Value>,
+	#[serde(rename = "description")]
+	pub description_raw: Option<Value>,
+	pub description_formatted: Option<String>,
 	#[serde(rename = "preventsChatReports")]
 	pub prevents_reports: Option<bool>,
 	#[serde(rename = "enforcesSecureChat")]
@@ -43,32 +46,6 @@ pub struct Server {
 pub struct Version {
 	pub name: String,
 	pub protocol: i32,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
-#[serde(untagged)]
-pub enum Description {
-	Plain(String),
-	Complex(DescriptionComplex),
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
-pub struct DescriptionComplex {
-	pub text: Option<String>,
-	pub color: Option<String>,
-	#[serde(default)]
-	pub bold: bool,
-	#[serde(default)]
-	pub italic: bool,
-	#[serde(default)]
-	pub underline: bool,
-	#[serde(default)]
-	pub strikethrough: bool,
-	#[serde(default)]
-	pub obfuscated: bool,
-	pub extra: Option<Vec<DescriptionComplex>>,
 }
 
 #[allow(dead_code)]
@@ -103,7 +80,7 @@ pub struct Mod {
 
 impl Server {
 	pub fn get_type(&self) -> ServerType {
-		// Neoforge sends a "isModded" field
+		// Neoforge sends an "isModded" field
 		if self.modded.is_some() {
 			return ServerType::Neoforge;
 		}
@@ -128,15 +105,84 @@ impl Server {
 		}
 	}
 
+    #[rustfmt::skip]
+	pub fn build_server_description(&self, value: &Value) -> String {
+		let mut output = String::new();
+
+		match value {
+			Value::String(s) => output.push_str(s),
+			Value::Array(array) => {
+				for value in array {
+					output.push_str(&self.build_server_description(value));
+				}
+			}
+			Value::Object(object) => {
+				for (key, value) in object {
+					match key.as_str() {
+						"obfuscated" => {
+							if let Some(b) = value.as_bool() && b {
+								output.push_str("§k")
+							}
+						},
+						"bold" => {
+							if let Some(b) = value.as_bool() && b {
+								output.push_str("§l")
+							}
+						},
+						"strikethrough" => {
+							if let Some(b) = value.as_bool() && b {
+								output.push_str("§m")
+							}
+						},
+						"underline" => {
+							if let Some(b) = value.as_bool() && b {
+								output.push_str("§n")
+							}
+						},
+						"italic" => {
+							if let Some(b) = value.as_bool() && b {
+								output.push_str("§o")
+							}
+						},
+						"color" => {
+							if let Some(c) = value.as_str() {
+								let color = MinecraftColorCodes::from(c.to_string());
+								output.push_str(format!("§{}", color.get_code().to_string()).as_str())
+							}
+						},
+						_ => (),
+					}
+				}
+
+				// MiniMOTD can put the "extra" field before the text field, this causes some servers
+				// using it to format incorrectly unless we specifically add the text AFTER
+				// all other format codes but BEFORE the extra field
+				if object.contains_key("text") {
+					let text = object.get("text").unwrap();
+					output.push_str(text.as_str().unwrap());
+				}
+				if object.contains_key("extra") {
+					if let Some(extra) = object.get("extra") {
+					output.push_str(&self.build_server_description(extra));
+					}
+				}
+			}
+			_ => {}
+		}
+
+		output
+	}
+
 	// Has the user opted out of scanning?
-	// pub fn check_opt_out(&self) -> bool {
-	// 	match &self.description {
-	// 		Some(description) => String::from(description.clone()).contains("§b§d§f§d§b"),
-	// 		None => false,
-	// 	}
-	// }
+	pub fn check_opt_out(&self) -> bool {
+		match &self.description_formatted {
+			Some(description) => String::from(description).contains("§b§d§f§d§b"),
+			None => false,
+		}
+	}
 }
 
+#[allow(dead_code)]
 impl Players {
 	pub fn player_track_check(&self, players: PlayerTracking) {
 		if let Some(sample) = &self.sample {
@@ -147,17 +193,4 @@ impl Players {
 			}
 		}
 	}
-}
-
-impl From<Description> for String {
-	fn from(value: Description) -> Self {
-		match value {
-			Description::Plain(s) => s,
-			Description::Complex(_) => String::from("SSV2-Rust Testing!"),
-		}
-	}
-}
-
-pub fn parse_response(response: String) -> Result<Server, serde_json::Error> {
-	serde_json::from_str(&response)
 }

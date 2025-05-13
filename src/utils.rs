@@ -1,7 +1,5 @@
 use crate::response::Server;
-#[cfg(feature = "warner")]
-use crate::warner::join_server;
-use crate::{database, ping, response};
+use crate::{database, ping};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
@@ -32,7 +30,7 @@ pub async fn handle_scan_results(
 	// Print scan errors
 	if !errors.is_empty() {
 		warn!("Scan returned {} total errors!", errors_len);
-		let mut counts = [0u32; 5];
+		let mut counts = [0u32; 6];
 		for e in errors.into_iter().filter_map(Result::err) {
 			let i: usize = e.into();
 			counts[i] += 1;
@@ -43,6 +41,7 @@ pub async fn handle_scan_results(
 		warn!("{} malformed responses", counts[2]);
 		warn!("{} errors while parsing responses", counts[3]);
 		warn!("{} servers timed out", counts[4]);
+		info!("{} servers removed due to opting out", counts[5])
 	}
 
 	// Transactions allow adding multiple statements to a single query
@@ -93,6 +92,8 @@ pub enum RunError {
 	ParseResponse(#[from] serde_json::Error),
 	#[error("Connection timed out")]
 	TimedOut(#[from] tokio::time::error::Elapsed),
+	#[error("Server opted out of scanning")]
+	ServerOptOut,
 }
 impl Into<usize> for RunError {
 	fn into(self) -> usize {
@@ -102,6 +103,84 @@ impl Into<usize> for RunError {
 			Self::MalformedResponse => 2,
 			Self::ParseResponse(_) => 3,
 			Self::TimedOut(_) => 4,
+			Self::ServerOptOut => 5,
+		}
+	}
+}
+
+pub enum MinecraftColorCodes {
+	Black,
+	DarkBlue,
+	DarkGreen,
+	DarkAqua,
+	DarkRed,
+	DarkPurple,
+	Gold,
+	Gray,
+	DarkGray,
+	Blue,
+	Green,
+	Aqua,
+	Red,
+	LightPurple,
+	Yellow,
+	White,
+	Reset,
+	UnknownValue,
+}
+
+impl From<String> for MinecraftColorCodes {
+	fn from(s: String) -> Self {
+		use MinecraftColorCodes::*;
+
+		match s.as_str() {
+			"black" => Black,
+			"dark_blue" => DarkBlue,
+			"dark_green" => DarkGreen,
+			"dark_aqua" => DarkAqua,
+			"dark_red" => DarkRed,
+			"dark_purple" | "purple" => DarkPurple,
+			"gold" => Gold,
+			"gray" | "grey" => Gray,
+			"dark_gray" | "dark_grey" => DarkGray,
+			"blue" => Blue,
+			"green" => Green,
+			"aqua" => Aqua,
+			"red" => Red,
+			"pink" | "light_purple" => LightPurple,
+			"yellow" => Yellow,
+			"white" => White,
+			"reset" => Reset,
+			_ => UnknownValue,
+		}
+	}
+}
+
+impl MinecraftColorCodes {
+	pub fn get_code(&self) -> char {
+		use MinecraftColorCodes::*;
+
+		match self {
+			Black => '0',
+			DarkBlue => '1',
+			DarkGreen => '2',
+			DarkAqua => '3',
+			DarkRed => '4',
+			DarkPurple => '5',
+			Gold => '6',
+			Gray => '7',
+			DarkGray => '8',
+			Blue => '9',
+			Green => 'a',
+			Aqua => 'b',
+			Red => 'c',
+			LightPurple => 'd',
+			Yellow => 'e',
+			White => 'f',
+			Reset => 'r',
+			// TODO: Currently its only servers that respond with hex values as colors that don't match
+			// Maybe theres a way with color averaging to fix this?
+			UnknownValue => 'r',
 		}
 	}
 }
@@ -122,9 +201,7 @@ pub async fn run(
 		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(host)).await??;
 		drop(permit);
 
-		let response = response::parse_response(results)?;
-
-		let _ = join_server(host.0).await;
+		let response = serde_json::from_str(&results)?;
 
 		Ok(CompletedServer {
 			ip: host.0.to_string(),

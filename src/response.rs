@@ -37,7 +37,7 @@ pub struct Server {
 	pub enforces_secure_chat: Option<bool>,
 	#[serde(rename = "isModded")]
 	pub modded: Option<bool>,
-	#[serde(rename = "forgeData")]
+	#[serde(alias = "forgeData", alias = "modinfo")]
 	pub forge_data: Option<ForgeData>,
 }
 
@@ -66,16 +66,17 @@ pub struct Player {
 #[allow(dead_code)]
 #[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct ForgeData {
+	#[serde(alias = "mods", alias = "modList")]
 	pub mods: Vec<Mod>,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Mod {
-	#[serde(rename = "modId")]
+	#[serde(alias = "modId", alias = "modid")]
 	pub id: String,
-	#[serde(rename = "modmarker")]
-	pub marker: String,
+	#[serde(alias = "modmarker", alias = "version")]
+	pub version: String,
 }
 
 impl Server {
@@ -85,7 +86,8 @@ impl Server {
 			return ServerType::Neoforge;
 		}
 
-		// Forge sends a "forgeData" object
+		// Forge sends a "forgeData" object for modern servers
+		// and "modinfo" for legacy versions
 		if self.forge_data.is_some() {
 			return ServerType::Lexforge;
 		}

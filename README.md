@@ -40,6 +40,8 @@ ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory sa
 - Automatic opting out. Unlike the original ServerSeeker where you had to join a discord server and request your server
   be removed. You can automatically remove yourself from the database and prevent further scans by modifying your
   servers MOTD.
+- Player and mod tracking. Find servers that have specific players online or servers running specific forge mods.
+- (or both at the same time!)
 - Self Hostable. Host your own scanning instance and find your own servers! (See below for warnings against running this
   on a residential network)
 

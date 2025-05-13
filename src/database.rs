@@ -117,7 +117,7 @@ pub async fn update(
 				.bind(&address)
 				.bind(port)
 				.bind(mods.id)
-				.bind(mods.marker)
+				.bind(mods.version)
 				.bind(timestamp)
 				.bind(timestamp)
 				.execute(&mut *transaction)

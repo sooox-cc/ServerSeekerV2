@@ -4,26 +4,20 @@ mod config;
 mod database;
 mod masscan;
 mod ping;
+mod rescan_servers;
 mod response;
-mod scan;
+mod scanner;
 mod utils;
-mod warner;
 
+use crate::scanner::Scanner;
 use clap::Parser;
 use config::load_config;
-use indicatif::ProgressStyle;
+use scanner::Mode;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::ConnectOptions;
 use std::time::Duration;
 use tracing::log::LevelFilter;
 use tracing::{error, info};
-
-#[derive(clap::ValueEnum, Clone, Debug)]
-enum Mode {
-	// TODO! Alternate mode: Run masscan, then rescan
-	Discovery,
-	Rescanner,
-}
 
 #[derive(Parser, Debug)]
 #[clap(about = "Scans the internet for minecraft servers and indexes them")]
@@ -55,6 +49,15 @@ async fn main() {
 
 	info!("Using config file: {}", arguments.config_file);
 
+	let database_url = format!(
+		"postgresql://{}:{}@{}:{}/{}",
+		config.database.user,
+		config.database.password,
+		config.database.host,
+		config.database.port,
+		config.database.table
+	);
+
 	let options = PgConnectOptions::new()
 		.username(&config.database.user)
 		.password(&config.database.password)
@@ -64,22 +67,13 @@ async fn main() {
 		// Turn off slow statement logging, this clogs the console
 		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
 
-	let pool = match PgPoolOptions::new().connect_with(options).await {
-		Ok(pool) => pool,
-		Err(e) => {
-			error!("Failed to connect to database: {e}");
-			std::process::exit(1);
-		}
-	};
+	let pool = PgPoolOptions::new().connect_with(options).await.ok();
 
-	let style = ProgressStyle::with_template(
-		"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
-	)
-	.unwrap()
-	.progress_chars("=>-");
-
-	match arguments.mode {
-		Mode::Discovery => masscan::start(pool, config, style).await,
-		Mode::Rescanner => scan::rescan_servers(pool, config, style).await,
-	}
+	Scanner::new()
+		.config(config)
+		.mode(arguments.mode)
+		.pool(pool)
+		.build()
+		.start()
+		.await;
 }

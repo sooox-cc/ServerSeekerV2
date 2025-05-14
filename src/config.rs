@@ -4,15 +4,15 @@ use std::fs::File;
 use std::io::{ErrorKind, Read};
 use tracing::error;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Config {
 	pub database: Database,
 	pub player_tracking: PlayerTracking,
-	pub scanner: Scanner,
+	pub scanner: ScannerConfig,
 	pub masscan: Masscan,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Database {
 	pub host: String,
 	pub port: u16,
@@ -21,38 +21,55 @@ pub struct Database {
 	pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PlayerTracking {
 	pub enabled: bool,
 	pub players: Vec<String>,
 }
 
-#[derive(Deserialize)]
-pub struct Scanner {
+#[derive(Deserialize, Debug)]
+pub struct ScannerConfig {
 	pub repeat: bool,
 	pub scan_delay: u64,
 	pub port_range_start: u16,
 	pub port_range_end: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Masscan {
 	pub config_file: String,
 	pub output_file: String,
 }
 
-impl Default for Scanner {
+impl Default for Config {
 	fn default() -> Self {
-		Self {
-			repeat: true,
-			scan_delay: 60,
-			port_range_start: 25565,
-			port_range_end: 25565,
+		Config {
+			database: Database {
+				host: "localhost".to_string(),
+				port: 5432,
+				table: "postgres".to_string(),
+				user: "postgres".to_string(),
+				password: "password".to_string(),
+			},
+			player_tracking: PlayerTracking {
+				enabled: false,
+				players: vec![],
+			},
+			scanner: ScannerConfig {
+				repeat: true,
+				scan_delay: 60,
+				port_range_start: 25565,
+				port_range_end: 25565,
+			},
+			masscan: Masscan {
+				config_file: "masscan.conf".to_string(),
+				output_file: "servers.json".to_string(),
+			},
 		}
 	}
 }
 
-impl Scanner {
+impl ScannerConfig {
 	pub fn total_ports(&self) -> u16 {
 		let start = self.port_range_start;
 		let end = self.port_range_end;

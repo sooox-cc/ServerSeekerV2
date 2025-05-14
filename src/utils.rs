@@ -1,5 +1,5 @@
+use crate::database;
 use crate::response::Server;
-use crate::{database, ping};
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
@@ -190,32 +190,4 @@ pub struct CompletedServer {
 	pub ip: String,
 	pub port: u16,
 	pub server: Server,
-}
-
-pub async fn run(
-	host: (String, u16),
-	progress_bar: Arc<ProgressBar>,
-) -> Result<CompletedServer, RunError> {
-	async fn run_inner(host: (&str, u16)) -> Result<CompletedServer, RunError> {
-		let permit = PERMITS.acquire().await.unwrap();
-		let results = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(host)).await??;
-		drop(permit);
-
-		let response = serde_json::from_str(&results)?;
-
-		Ok(CompletedServer {
-			ip: host.0.to_string(),
-			port: host.1,
-			server: response,
-		})
-	}
-
-	let completed_server = run_inner((host.0.as_str(), host.1)).await;
-
-	if let Err(e) = &completed_server {
-		debug!("{} threw an error: {}", host.0, e)
-	}
-
-	progress_bar.inc(1);
-	completed_server
 }

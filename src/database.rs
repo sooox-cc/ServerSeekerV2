@@ -1,5 +1,6 @@
 use crate::response::Server;
 use crate::utils;
+use futures_util::stream::BoxStream;
 use sqlx::postgres::PgRow;
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
@@ -8,11 +9,10 @@ use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC")
-		.fetch_all(pool)
-		.await
-		.expect("failed to fetch servers from database")
+pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sqlx::Error>> {
+	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC").fetch(pool)
+	// .await
+	// .expect("failed to fetch servers from database")
 }
 
 pub async fn update(

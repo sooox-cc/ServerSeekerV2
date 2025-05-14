@@ -2,9 +2,7 @@
 
 mod config;
 mod database;
-mod masscan;
 mod ping;
-mod rescan_servers;
 mod response;
 mod scanner;
 mod utils;

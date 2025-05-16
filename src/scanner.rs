@@ -2,20 +2,20 @@ use crate::config::Config;
 use crate::response::Server;
 use crate::utils::RunError;
 use crate::{database, ping};
-use futures_util::future;
+use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
+use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
-use tokio::sync::{Mutex, Semaphore};
-use tracing::log::warn;
-use tracing::{debug, error, info};
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info, warn};
 
 static PERMITS: Semaphore = Semaphore::const_new(1000);
-const TIMEOUT_SECS: Duration = Duration::from_secs(5);
+const TIMEOUT_SECS: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Default)]
 pub struct ScanBuilder {
@@ -78,42 +78,46 @@ impl Scanner {
 	}
 
 	/// Starts the scanner based on the selected mode
-	pub async fn start(self) {
+	pub async fn start(&self) {
 		match self.mode {
-			Mode::Discovery => Self::masscan(self).await,
-			Mode::Rescanner => Self::rescan(self).await,
+			Mode::Discovery => self.masscan().await,
+			Mode::Rescanner => self.rescan().await,
 		}
 	}
 
-	/// Takes a vector of pingable servers
-	pub async fn scan_servers_from_vec(servers: Vec<(String, u16)>) -> Vec<Server> {
+	/// Takes a list of ip addresses and ports, either from postgres or masscan
+	/// and creates a ping job for every item, then joins on them
+	pub async fn scan_servers_from_vec(
+		&self,
+		servers: Vec<(String, u16)>,
+	) -> Vec<Result<Server, RunError>> {
 		let style = ProgressStyle::with_template(
 			"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
 		)
-		.unwrap()
+		.expect("failed to create progress bar style")
 		.progress_chars("=>-");
 
-		let bar = Arc::new(ProgressBar::new(servers.len() as u64).with_style(style));
+		let bar = ProgressBar::new(servers.len() as u64).with_style(style);
 
 		let handles = servers
 			.into_iter()
-			.map(|s| Scanner::run(s.0, s.1, bar.clone()))
+			.map(|s| {
+				self.run(s.0, s.1).map(|r| {
+					bar.inc(1);
+					r
+				})
+			})
 			.collect::<Vec<_>>();
 
-		// Wait for all tasks to finish
 		let results = future::join_all(handles).await;
 
 		bar.finish_and_clear();
 
-		results
-			.into_iter()
-			// TODO! Don't flatten here, errors are needed later
-			.flatten()
-			.collect::<Vec<_>>()
+		results.into_iter().collect()
 	}
 
 	/// Rescan servers already found in the database
-	async fn rescan(self) {
+	async fn rescan(&self) {
 		let port_start = self.config.scanner.port_range_start;
 		let port_end = self.config.scanner.port_range_end;
 		let total_ports = self.config.scanner.total_ports();
@@ -132,10 +136,18 @@ impl Scanner {
 			let servers = database::fetch_servers(&self.pool)
 				.await
 				.into_iter()
-				.map(|row| (row.get::<String, _>(0), row.get::<i32, _>(1) as u16))
+				.map(|row| {
+					(
+						row.get::<IpNet, _>(0).addr().to_string(),
+						row.get::<i32, _>(1) as u16,
+					)
+				})
 				.collect::<Vec<(_, _)>>();
 
-			Self::scan_servers_from_vec(servers).await;
+			let scan_results = self.scan_servers_from_vec(servers).await;
+			let completed_servers = self.print_scan_results(scan_results).await;
+
+			database::update_servers_from_vec(completed_servers, self.pool.clone()).await;
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -155,7 +167,7 @@ impl Scanner {
 	}
 
 	/// Starts an instance of masscan to find new servers
-	async fn masscan(self) {
+	async fn masscan(&self) {
 		let masscan_config = &self.config.masscan.config_file;
 		let masscan_output = &self.config.masscan.output_file;
 
@@ -164,7 +176,10 @@ impl Scanner {
 		}
 
 		loop {
-			let output_file = std::fs::File::open(masscan_output).unwrap();
+			let file = OpenOptions::new()
+				.read(true)
+				.open(masscan_output)
+				.expect("couldn't open file");
 
 			let _ = Command::new("sudo")
 				.args(["masscan", "-c", masscan_config])
@@ -175,7 +190,7 @@ impl Scanner {
 
 			info!("Masscan has completed!");
 
-			let reader = BufReader::new(output_file);
+			let reader = BufReader::new(file);
 			let mut servers = Vec::new();
 
 			for line in reader.lines() {
@@ -199,7 +214,10 @@ impl Scanner {
 				servers.push((address, port));
 			}
 
-			Self::scan_servers_from_vec(servers).await;
+			let scan_results = self.scan_servers_from_vec(servers).await;
+			let completed_servers = self.print_scan_results(scan_results).await;
+
+			database::update_servers_from_vec(completed_servers, self.pool.clone()).await;
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -218,42 +236,32 @@ impl Scanner {
 		}
 	}
 
-	async fn run(address: String, port: u16, bar: Arc<ProgressBar>) -> anyhow::Result<Server> {
-		async fn inner(address: String, port: u16) -> anyhow::Result<Server> {
-			// Ping server
-			let permit = PERMITS.acquire().await?;
-			let pinged_server = tokio::time::timeout(
-				TIMEOUT_SECS,
-				// TODO! Fix
-				ping::ping_server((&*address.split('/').nth(0).unwrap(), port)),
-			)
-			.await??;
-			drop(permit);
+	async fn run(&self, address: String, port: u16) -> Result<Server, RunError> {
+		// Ping server
+		let permit = PERMITS
+			.acquire()
+			.await
+			.expect("failed to acquire a semaphore");
+		let pinged_server =
+			tokio::time::timeout(TIMEOUT_SECS, ping::ping_server((&*address, port))).await??;
+		drop(permit);
 
-			// Parse response
-			let mut server = serde_json::from_str::<Server>(&pinged_server)?;
-			server.address = address;
-			server.port = port;
+		// Parse response
+		let mut server = serde_json::from_str::<Server>(&pinged_server)?;
+		server.address = address;
+		server.port = port;
 
-			Ok(server)
-		}
-
-		let server = inner(address, port).await;
-		bar.inc(1);
-		server
+		Ok(server)
 	}
 
-	pub async fn complete_scan(&self, results: Vec<Result<Server, RunError>>) {
-		let results_len = results.len();
-		debug!("results_len = {}", results_len);
+	pub async fn print_scan_results(&self, results: Vec<Result<Server, RunError>>) -> Vec<Server> {
+		debug!("results_len = {}", results.len());
 
 		let (servers, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
 
-		let errors_len = errors.len();
-
-		// Print scan errors
+		// Print errors
 		if !errors.is_empty() {
-			warn!("Scan returned {} total errors!", errors_len);
+			warn!("Scan returned {} total errors!", errors.len());
 			let mut counts = [0u32; 6];
 			for e in errors.into_iter().filter_map(Result::err) {
 				let i: usize = e.into();
@@ -268,29 +276,9 @@ impl Scanner {
 			info!("{} servers removed due to opting out", counts[5])
 		}
 
-		// Transactions allow adding multiple statements to a single query
-		let transaction = Arc::new(Mutex::new(
-			self.pool
-				.begin()
-				.await
-				.expect("failed to create transaction"),
-		));
-
-		let completed_servers = servers
+		servers
 			.into_iter()
 			.filter_map(Result::ok)
-			.collect::<Vec<_>>();
-
-		info!(
-			"Commiting {} servers to database...",
-			completed_servers.len()
-		);
-
-		Arc::try_unwrap(transaction)
-			.unwrap()
-			.into_inner()
-			.commit()
-			.await
-			.expect("error while commiting to database");
+			.collect::<Vec<_>>()
 	}
 }

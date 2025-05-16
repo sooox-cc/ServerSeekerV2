@@ -1,4 +1,3 @@
-use crate::response::Server;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,13 +17,15 @@ pub enum RunError {
 }
 impl Into<usize> for RunError {
 	fn into(self) -> usize {
+		use RunError::*;
+
 		match self {
-			Self::AddressParseError(_) => 0,
-			Self::IOError(_) => 1,
-			Self::MalformedResponse => 2,
-			Self::ParseResponse(_) => 3,
-			Self::TimedOut(_) => 4,
-			Self::ServerOptOut => 5,
+			AddressParseError(_) => 0,
+			IOError(_) => 1,
+			MalformedResponse => 2,
+			ParseResponse(_) => 3,
+			TimedOut(_) => 4,
+			ServerOptOut => 5,
 		}
 	}
 }
@@ -104,11 +105,4 @@ impl MinecraftColorCodes {
 			UnknownValue => 'r',
 		}
 	}
-}
-
-#[derive(Debug)]
-pub struct CompletedServer {
-	pub ip: String,
-	pub port: u16,
-	pub server: Server,
 }

@@ -1,20 +1,26 @@
 use crate::response::Server;
 use crate::utils;
+use futures_util::{future, FutureExt};
+use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
-use sqlx::{PgConnection, Pool, Postgres};
+use sqlx::{PgConnection, Pool, Postgres, Transaction};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tracing::info;
 
+/// Returns all servers from the database
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address::text, port FROM servers ORDER BY last_seen ASC")
+	sqlx::query("SELECT address, port FROM servers ORDER BY last_seen ASC")
 		.fetch_all(pool)
 		.await
 		.expect("failed to fetch servers from database")
 }
 
+/// Deletes a server from the database
 pub async fn delete_server(
 	address: String,
 	transaction: &mut PgConnection,
@@ -25,7 +31,56 @@ pub async fn delete_server(
 		.await
 }
 
-pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::Result<()> {
+/// Takes in a list of completed servers and a database connection
+/// and handles all joining of tasks, progress bar updates and updating
+pub async fn update_servers_from_vec(vec: Vec<Server>, pool: Pool<Postgres>) {
+	// Transactions add multiple SQL statements into one big query
+	let transaction = Arc::new(Mutex::new(
+		pool.begin().await.expect("failed to create transaction"),
+	));
+
+	let style = ProgressStyle::with_template(
+		"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
+	)
+	.expect("failed to create progress bar style")
+	.progress_chars("=>-");
+
+	let bar = ProgressBar::new(vec.len() as u64).with_style(style);
+
+	info!("Commiting {} servers to database", vec.len());
+
+	// Create all handles
+	let handles = vec
+		.into_iter()
+		.map(|s| {
+			update_server(s, transaction.clone()).map(|r| {
+				bar.inc(1);
+				r
+			})
+		})
+		.collect::<Vec<_>>();
+
+	future::join_all(handles).await;
+
+	bar.finish_and_clear();
+
+	Arc::try_unwrap(transaction)
+		.unwrap()
+		.into_inner()
+		.commit()
+		.await
+		.expect("error while commiting to database");
+}
+
+/// Updates a single server in the database, this includes all mods
+/// and players that come with it. Will also remove a server from the
+/// database if it has requested to be removed
+pub async fn update_server(
+	server: Server,
+	transaction: Arc<Mutex<Transaction<'_, Postgres>>>,
+) -> anyhow::Result<()> {
+	let conn = &mut **transaction.lock().await;
+
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
 	let address = IpNet::from_str(&(server.address.to_string() + "/32"))?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
@@ -38,7 +93,7 @@ pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::R
 	let description_formatted = server.build_server_description(description_raw);
 
 	if server.check_opt_out() {
-		let modified_rows = delete_server(address.to_string(), transaction)
+		let modified_rows = delete_server(address.to_string(), conn)
 			.await?
 			.rows_affected();
 		info!(
@@ -96,7 +151,7 @@ pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::R
 	.bind(timestamp)
 	.bind(server.players.online)
 	.bind(server.players.max)
-	.execute(&mut *transaction)
+	.execute(&mut *conn)
 	.await?;
 
 	if let Some(sample) = server.players.sample {
@@ -105,14 +160,14 @@ pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::R
 				sqlx::query("INSERT INTO players (address, port, uuid, name, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6)
 	                ON CONFLICT (address, port, uuid) DO UPDATE SET
 	                last_seen = EXCLUDED.last_seen")
-					.bind(&address)
-					.bind(server.port as i32)
-					.bind(uuid)
-					.bind(player.name)
-					.bind(timestamp)
-					.bind(timestamp)
-					.execute(&mut *transaction)
-					.await?;
+                    .bind(&address)
+                    .bind(server.port as i32)
+                    .bind(uuid)
+                    .bind(player.name)
+                    .bind(timestamp)
+                    .bind(timestamp)
+                    .execute(&mut *conn)
+                    .await?;
 			}
 		}
 	}
@@ -120,14 +175,14 @@ pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::R
 	if let Some(mods_sample) = server.forge_data {
 		for mods in mods_sample.mods {
 			sqlx::query("INSERT INTO mods (address, port, id, mod_marker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, id) DO NOTHING")
-				.bind(&address)
-				.bind(server.port as i32)
-				.bind(mods.id)
-				.bind(mods.version)
-				.bind(timestamp)
-				.bind(timestamp)
-				.execute(&mut *transaction)
-				.await?;
+                .bind(&address)
+                .bind(server.port as i32)
+                .bind(mods.id)
+                .bind(mods.version)
+                .bind(timestamp)
+                .bind(timestamp)
+                .execute(&mut *conn)
+                .await?;
 		}
 	}
 

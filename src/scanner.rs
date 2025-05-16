@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::response::Server;
+use crate::utils::RunError;
 use crate::{database, ping};
 use futures_util::future;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -9,9 +10,9 @@ use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tracing::log::warn;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 static PERMITS: Semaphore = Semaphore::const_new(1000);
 const TIMEOUT_SECS: Duration = Duration::from_secs(5);
@@ -84,7 +85,8 @@ impl Scanner {
 		}
 	}
 
-	pub async fn scan_servers_from_vec(servers: Vec<(String, u16)>) {
+	/// Takes a vector of pingable servers
+	pub async fn scan_servers_from_vec(servers: Vec<(String, u16)>) -> Vec<Server> {
 		let style = ProgressStyle::with_template(
 			"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
 		)
@@ -95,18 +97,19 @@ impl Scanner {
 
 		let handles = servers
 			.into_iter()
-			.map(|s| tokio::task::spawn(Self::run(s.0, s.1)))
+			.map(|s| Scanner::run(s.0, s.1, bar.clone()))
 			.collect::<Vec<_>>();
 
 		// Wait for all tasks to finish
 		let results = future::join_all(handles).await;
-		let completed_servers = results
-			.into_iter()
-			.flatten()
-			.map(|s| s.ok())
-			.collect::<Vec<_>>();
 
 		bar.finish_and_clear();
+
+		results
+			.into_iter()
+			// TODO! Don't flatten here, errors are needed later
+			.flatten()
+			.collect::<Vec<_>>()
 	}
 
 	/// Rescan servers already found in the database
@@ -129,10 +132,10 @@ impl Scanner {
 			let servers = database::fetch_servers(&self.pool)
 				.await
 				.into_iter()
-				.map(|row| (row.get::<String, _>(0), row.get::<i32, _>(1)))
+				.map(|row| (row.get::<String, _>(0), row.get::<i32, _>(1) as u16))
 				.collect::<Vec<(_, _)>>();
 
-			// Self::scan_servers_from_iterator(servers.into_iter()).await;
+			Self::scan_servers_from_vec(servers).await;
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -162,7 +165,6 @@ impl Scanner {
 
 		loop {
 			let output_file = std::fs::File::open(masscan_output).unwrap();
-			// let output_file = std::fs::File::create(masscan_output).unwrap();
 
 			let _ = Command::new("sudo")
 				.args(["masscan", "-c", masscan_config])
@@ -174,35 +176,30 @@ impl Scanner {
 			info!("Masscan has completed!");
 
 			let reader = BufReader::new(output_file);
-			let mut handles = Vec::new();
+			let mut servers = Vec::new();
 
 			for line in reader.lines() {
-				let line = if let Ok(line) = line {
-					line
-				} else {
-					continue;
+				let line = match line {
+					Ok(line) => line,
+					Err(_) => continue,
 				};
 
-				let mut full_line = line.split_whitespace();
+				let mut line = line.split_whitespace();
 
-				let port = if let Some(port) = full_line.nth(2) {
-					if let Ok(port) = port.parse::<u16>() {
-						port
-					} else {
-						continue;
-					}
-				} else {
-					continue;
+				let port = match line.nth(2).and_then(|s| s.parse::<u16>().ok()) {
+					Some(port) => port,
+					None => continue,
 				};
 
-				let address = if let Some(address) = full_line.next() {
-					address.to_owned()
-				} else {
-					continue;
+				let address = match line.next() {
+					Some(address) => address.to_owned(),
+					None => continue,
 				};
 
-				handles.push(tokio::task::spawn(Self::run(address, port)));
+				servers.push((address, port));
 			}
+
+			Self::scan_servers_from_vec(servers).await;
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -221,21 +218,79 @@ impl Scanner {
 		}
 	}
 
-	async fn run(address: String, port: u16) -> anyhow::Result<Server> {
-		let host = (&*address, port);
+	async fn run(address: String, port: u16, bar: Arc<ProgressBar>) -> anyhow::Result<Server> {
+		async fn inner(address: String, port: u16) -> anyhow::Result<Server> {
+			// Ping server
+			let permit = PERMITS.acquire().await?;
+			let pinged_server = tokio::time::timeout(
+				TIMEOUT_SECS,
+				// TODO! Fix
+				ping::ping_server((&*address.split('/').nth(0).unwrap(), port)),
+			)
+			.await??;
+			drop(permit);
 
-		// Ping server
-		let permit = PERMITS.acquire().await?;
-		let pinged_server = tokio::time::timeout(TIMEOUT_SECS, ping::ping_server(host)).await??;
-		drop(permit);
+			// Parse response
+			let mut server = serde_json::from_str::<Server>(&pinged_server)?;
+			server.address = address;
+			server.port = port;
 
-		println!("{pinged_server}");
+			Ok(server)
+		}
 
-		// Parse response
-		let mut server: Server = serde_json::from_str(&pinged_server)?;
-		server.address = address;
-		server.port = port;
+		let server = inner(address, port).await;
+		bar.inc(1);
+		server
+	}
 
-		Ok(server)
+	pub async fn complete_scan(&self, results: Vec<Result<Server, RunError>>) {
+		let results_len = results.len();
+		debug!("results_len = {}", results_len);
+
+		let (servers, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+
+		let errors_len = errors.len();
+
+		// Print scan errors
+		if !errors.is_empty() {
+			warn!("Scan returned {} total errors!", errors_len);
+			let mut counts = [0u32; 6];
+			for e in errors.into_iter().filter_map(Result::err) {
+				let i: usize = e.into();
+				counts[i] += 1;
+			}
+
+			warn!("{} errors while parsing addresses", counts[0]);
+			warn!("{} I/0 Errors", counts[1]);
+			warn!("{} malformed responses", counts[2]);
+			warn!("{} errors while parsing responses", counts[3]);
+			warn!("{} servers timed out", counts[4]);
+			info!("{} servers removed due to opting out", counts[5])
+		}
+
+		// Transactions allow adding multiple statements to a single query
+		let transaction = Arc::new(Mutex::new(
+			self.pool
+				.begin()
+				.await
+				.expect("failed to create transaction"),
+		));
+
+		let completed_servers = servers
+			.into_iter()
+			.filter_map(Result::ok)
+			.collect::<Vec<_>>();
+
+		info!(
+			"Commiting {} servers to database...",
+			completed_servers.len()
+		);
+
+		Arc::try_unwrap(transaction)
+			.unwrap()
+			.into_inner()
+			.commit()
+			.await
+			.expect("error while commiting to database");
 	}
 }

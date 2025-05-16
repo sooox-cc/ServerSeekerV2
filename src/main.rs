@@ -47,15 +47,6 @@ async fn main() {
 
 	info!("Using config file: {}", arguments.config_file);
 
-	let database_url = format!(
-		"postgresql://{}:{}@{}:{}/{}",
-		config.database.user,
-		config.database.password,
-		config.database.host,
-		config.database.port,
-		config.database.table
-	);
-
 	let options = PgConnectOptions::new()
 		.username(&config.database.user)
 		.password(&config.database.password)

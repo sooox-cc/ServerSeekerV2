@@ -3,19 +3,14 @@ use crate::response::Server;
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
-use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tracing::{debug, info, warn};
 
-static PERMITS: Semaphore = Semaphore::const_new(1000);
-const TIMEOUT_SECS: Duration = Duration::from_secs(5);
-
-pub async fn handle_scan_results(
-	results: Vec<Result<Result<CompletedServer, RunError>, JoinError>>,
+pub async fn complete_scan(
+	results: Vec<Result<Result<Server, RunError>, JoinError>>,
 	pool: &Pool<Postgres>,
-	style: ProgressStyle,
 ) {
 	let results_len = results.len();
 	debug!("results_len = {}", results_len);
@@ -58,19 +53,6 @@ pub async fn handle_scan_results(
 		"Commiting {} servers to database...",
 		completed_servers.len()
 	);
-	let bar = ProgressBar::new(completed_servers.len() as u64).with_style(style);
-
-	for server in completed_servers.into_iter().progress_with(bar) {
-		if let Err(e) = database::update(
-			server.server,
-			&(server.ip, server.port),
-			&mut *transaction.lock().await,
-		)
-		.await
-		{
-			warn!("Failed to update database: {}", e);
-		}
-	}
 
 	Arc::try_unwrap(transaction)
 		.unwrap()

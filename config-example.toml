@@ -17,7 +17,7 @@ players = [""]
 [masscan]
 # Location of masscans config file
 config_file = "masscan.conf"
-# Masscan output location
+# Where is masscan outputting its data?
 output_file = "servers.json"
 
 [database]

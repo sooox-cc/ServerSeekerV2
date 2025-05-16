@@ -1,4 +1,3 @@
-use crate::config::PlayerTracking;
 use crate::utils::MinecraftColorCodes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +24,11 @@ pub enum ServerType {
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Server {
+	// Contain a servers IP and port in the struct
+	#[serde(default)]
+	pub address: String,
+	#[serde(default)]
+	pub port: u16,
 	pub version: Version,
 	pub favicon: Option<String>,
 	pub players: Players,
@@ -37,7 +41,9 @@ pub struct Server {
 	pub enforces_secure_chat: Option<bool>,
 	#[serde(rename = "isModded")]
 	pub modded: Option<bool>,
-	#[serde(alias = "forgeData", alias = "modinfo")]
+	// "forgeData" is for modern versions of forge
+	// "modinfo" is for legacy versions of forge
+	#[serde(rename = "forgeData", alias = "modinfo")]
 	pub forge_data: Option<ForgeData>,
 }
 
@@ -66,7 +72,9 @@ pub struct Player {
 #[allow(dead_code)]
 #[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct ForgeData {
-	#[serde(alias = "mods", alias = "modList")]
+	// "mods", is for modern versions of forge
+	// "modList" is legacy forge versions
+	#[serde(rename = "mods", alias = "modList")]
 	pub mods: Vec<Mod>,
 }
 
@@ -184,19 +192,6 @@ impl Server {
 		match &self.description_formatted {
 			Some(description) => String::from(description).contains("§b§d§f§d§b"),
 			None => false,
-		}
-	}
-}
-
-#[allow(dead_code)]
-impl Players {
-	pub fn player_track_check(&self, players: PlayerTracking) {
-		if let Some(sample) = &self.sample {
-			for p in sample {
-				if players.players.contains(&p.name) {
-					todo!()
-				}
-			}
 		}
 	}
 }

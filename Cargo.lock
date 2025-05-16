@@ -15,6 +15,7 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "toml",
  "tracing",
  "tracing-subscriber",

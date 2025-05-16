@@ -19,6 +19,7 @@ indicatif = { version = "0.17" }
 futures-util = "0.3"
 anyhow = "1.0.98"
 clap = { version = "4.5.37", features = ["derive"] }
+tokio-stream = { version = "0.1.17", features = ["io-util"] }
 
 [profile.release]
 strip = true

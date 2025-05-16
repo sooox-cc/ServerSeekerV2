@@ -1,6 +1,6 @@
 use crate::response::Server;
 use crate::utils;
-use sqlx::postgres::PgRow;
+use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
 use sqlx::{PgConnection, Pool, Postgres};
@@ -9,21 +9,25 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address FROM servers ORDER BY last_seen ASC")
+	sqlx::query("SELECT address::text, port FROM servers ORDER BY last_seen ASC")
 		.fetch_all(pool)
 		.await
 		.expect("failed to fetch servers from database")
 }
 
-pub async fn update(
-	server: Server,
-	(address, port): &(String, u16),
+pub async fn delete_server(
+	address: String,
 	transaction: &mut PgConnection,
-) -> anyhow::Result<()> {
-	let port = *port as i32;
+) -> Result<PgQueryResult, sqlx::Error> {
+	sqlx::query("DELETE FROM servers WHERE address = $1")
+		.bind(address)
+		.execute(transaction)
+		.await
+}
 
+pub async fn update(server: Server, transaction: &mut PgConnection) -> anyhow::Result<()> {
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
-	let address = IpNet::from_str((address.to_owned() + "/32").as_str())?;
+	let address = IpNet::from_str(&(server.address.to_string() + "/32"))?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
 	// Handle server descriptions
@@ -34,11 +38,13 @@ pub async fn update(
 	let description_formatted = server.build_server_description(description_raw);
 
 	if server.check_opt_out() {
-		info!("Removing {} from the database due to opt out!", address);
-		sqlx::query("DELETE FROM servers WHERE address = $1")
-			.bind(address)
-			.execute(transaction)
-			.await?;
+		let modified_rows = delete_server(address.to_string(), transaction)
+			.await?
+			.rows_affected();
+		info!(
+			"Removing {} from the database due to opt out! ({} rows modified)",
+			address, modified_rows
+		);
 
 		return Err(utils::RunError::ServerOptOut)?;
 	}
@@ -77,7 +83,7 @@ pub async fn update(
     	max_players = EXCLUDED.max_players",
 	)
 	.bind(&address)
-	.bind(port)
+	.bind(server.port as i32)
 	.bind(server.get_type())
 	.bind(server.version.name)
 	.bind(server.version.protocol)
@@ -100,7 +106,7 @@ pub async fn update(
 	                ON CONFLICT (address, port, uuid) DO UPDATE SET
 	                last_seen = EXCLUDED.last_seen")
 					.bind(&address)
-					.bind(port)
+					.bind(server.port as i32)
 					.bind(uuid)
 					.bind(player.name)
 					.bind(timestamp)
@@ -115,7 +121,7 @@ pub async fn update(
 		for mods in mods_sample.mods {
 			sqlx::query("INSERT INTO mods (address, port, id, mod_marker) VALUES ($1, $2, $3, $4) ON CONFLICT (address, port, id) DO NOTHING")
 				.bind(&address)
-				.bind(port)
+				.bind(server.port as i32)
 				.bind(mods.id)
 				.bind(mods.version)
 				.bind(timestamp)

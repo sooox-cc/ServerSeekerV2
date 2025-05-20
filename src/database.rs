@@ -2,7 +2,6 @@ use crate::response::Server;
 use crate::utils;
 use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use parking_lot::Mutex;
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
@@ -10,6 +9,7 @@ use sqlx::{PgConnection, Pool, Postgres, Transaction};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tracing::info;
 
 /// Returns all servers from the database
@@ -79,7 +79,7 @@ pub async fn update_server(
 	server: Server,
 	transaction: Arc<Mutex<Transaction<'_, Postgres>>>,
 ) -> anyhow::Result<()> {
-	let conn = &mut **transaction.lock();
+	let conn = &mut **transaction.lock().await;
 
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
 	let address = IpNet::from_str(&(server.address.to_string() + "/32"))?;
@@ -185,8 +185,6 @@ pub async fn update_server(
                 .await?;
 		}
 	}
-
-	println!("Completed!");
 
 	Ok(())
 }

@@ -3,6 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tracing::debug;
 
 const PAYLOAD: [u8; 9] = [
 	6, // Size: Amount of bytes in the message
@@ -18,46 +19,88 @@ const PAYLOAD: [u8; 9] = [
 pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunError> {
 	let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from_str(address)?, port));
 
-	// TODO: Rewrite ALL of this below
-	// Connect and create buffer
 	let mut stream = TcpStream::connect(&socket).await?;
+	stream.write_all(&PAYLOAD).await?;
 	let mut buffer = [0; 1024];
 
-	// Send payload
-	stream.write_all(&PAYLOAD).await?;
-	let total_read = stream.read(&mut buffer).await?;
+	// The index is used to point to the position at the start of the string.
+	// It gets increased by the amount of bytes read to decode the packet ID, Packet length
+	// And string length
+	let mut index = 0;
 
-	// Decode
-	let (varint, length) = decode(&buffer);
-	let bytes_needed = varint + length as usize;
-	if bytes_needed < 3 || total_read > bytes_needed {
+	// Returns how many bytes were read from the stream into the buffer
+	let total_read_bytes = stream.read(&mut buffer).await?;
+
+	if total_read_bytes == 0 {
+		debug!("Total read bytes is 0! {buffer:?}");
 		return Err(RunError::MalformedResponse);
 	}
 
-	let mut output = Vec::with_capacity(bytes_needed);
-	output.extend_from_slice(&buffer[..total_read]);
-	let json = decode(&(buffer[(length + 1).into()..]));
+	// Decode Packet length
+	index += decode_varint(&buffer).1;
 
-	// Read everything
+	// Decode Packet ID
+	// Technically since Packet ID should always be 0 and will never take more than 1 byte to encode
+	// We could ignore it entirely and just advance the index by 1
+	let (packet_id, packet_id_bytes) = decode_varint(&buffer[index as usize..]);
+	index += packet_id_bytes;
+	if packet_id != 0 {
+		debug!("Received invalid packet id from {}: {}", address, packet_id);
+	}
+
+	// Decode the string length
+	let (string_length, string_length_bytes) = decode_varint(&buffer[index as usize..]);
+	index += string_length_bytes;
+	// Max size for a 3 byte varint
+	if string_length > 32767 {
+		debug!(
+			"Received abnormally large string length from {}: {}",
+			address, string_length
+		);
+	}
+
+	// WARNING: Don't allocate vec size based on what the server says it needs from the varint.
+	// Allocate size based on what the server *actually* sends back, some servers can crash the
+	// program by attempting to allocate insane amounts of memory this way.
+	//
+	// Adds everything we have read so far minus the packet ID and packet length to a new vec
+
+	// Error checking
+	if index as usize > total_read_bytes {
+		debug!("Index: {index} is bigger than total read bytes: {total_read_bytes}");
+		return Err(RunError::MalformedResponse);
+	}
+
+	let mut output = Vec::from(&buffer[index as usize..total_read_bytes]);
+	let string_length = string_length + index as usize;
+
+	if total_read_bytes > string_length {
+		debug!(
+			"Total read bytes: {total_read_bytes} is larger than string length: {string_length}"
+		);
+		return Err(RunError::MalformedResponse);
+	}
+
+	// Read the rest of the servers JSON
 	stream
-		.take((bytes_needed - total_read) as u64)
+		// Takes everything after the end of the data we already have in the buffer
+		// Up until the end of the strings length
+		.take((string_length - total_read_bytes) as _)
 		.read_to_end(&mut output)
 		.await?;
 
-	if output.len() < (length + 1 + json.1).into() {
-		return Err(RunError::MalformedResponse);
-	}
-
-	Ok(String::from_utf8_lossy(&output[(length + 1 + json.1).into()..]).to_string())
+	Ok(String::from_utf8_lossy(&output).to_string())
 }
 
-fn decode(bytes: &[u8]) -> (usize, u8) {
-	let mut val: usize = 0;
+// returns the decoded varint and how many bytes were read
+fn decode_varint(bytes: &[u8]) -> (usize, u8) {
+	let mut value: usize = 0;
 	let mut count: u8 = 0;
 
 	for b in bytes {
-		val |= ((b & 0x7f) as usize) << count;
+		value |= ((b & 0x7F) as usize) << count;
 
+		// right shift 7 times, if resulting value is 0 it means this is the end of the varint
 		if (b >> 7) != 1 {
 			break;
 		}
@@ -65,5 +108,5 @@ fn decode(bytes: &[u8]) -> (usize, u8) {
 		count += 7;
 	}
 
-	(val, (count / 7) + 1)
+	(value, (count / 7) + 1)
 }

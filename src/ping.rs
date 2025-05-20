@@ -32,7 +32,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	let total_read_bytes = stream.read(&mut buffer).await?;
 
 	if total_read_bytes == 0 {
-		debug!("Total read bytes is 0! {buffer:?}");
+		debug!("[{address}] Total read bytes is 0");
 		return Err(RunError::MalformedResponse);
 	}
 
@@ -45,7 +45,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	let (packet_id, packet_id_bytes) = decode_varint(&buffer[index as usize..]);
 	index += packet_id_bytes;
 	if packet_id != 0 {
-		debug!("Received invalid packet id from {}: {}", address, packet_id);
+		debug!("[{address}] Received invalid packet id: {packet_id}");
 	}
 
 	// Decode the string length
@@ -53,10 +53,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	index += string_length_bytes;
 	// Max size for a 3 byte varint
 	if string_length > 32767 {
-		debug!(
-			"Received abnormally large string length from {}: {}",
-			address, string_length
-		);
+		debug!("[{address}] Received abnormally large string length: {string_length}");
 	}
 
 	// WARNING: Don't allocate vec size based on what the server says it needs from the varint.
@@ -67,7 +64,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 
 	// Error checking
 	if index as usize > total_read_bytes {
-		debug!("Index: {index} is bigger than total read bytes: {total_read_bytes}");
+		debug!("[{address}] Index: {index} is bigger than total read bytes: {total_read_bytes}");
 		return Err(RunError::MalformedResponse);
 	}
 
@@ -76,7 +73,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 
 	if total_read_bytes > string_length {
 		debug!(
-			"Total read bytes: {total_read_bytes} is larger than string length: {string_length}"
+			"[{address}] Total read bytes: {total_read_bytes} is larger than string length: {string_length}"
 		);
 		return Err(RunError::MalformedResponse);
 	}

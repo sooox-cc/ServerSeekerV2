@@ -2,6 +2,7 @@ use crate::response::Server;
 use crate::utils;
 use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
+use parking_lot::Mutex;
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
@@ -9,7 +10,6 @@ use sqlx::{PgConnection, Pool, Postgres, Transaction};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
 use tracing::info;
 
 /// Returns all servers from the database
@@ -34,6 +34,8 @@ pub async fn delete_server(
 /// Takes in a list of completed servers and a database connection
 /// and handles all joining of tasks, progress bar updates and updating
 pub async fn update_servers_from_vec(vec: Vec<Server>, pool: Pool<Postgres>) {
+	info!("Commiting {} servers to database", vec.len());
+
 	// Transactions add multiple SQL statements into one big query
 	let transaction = Arc::new(Mutex::new(
 		pool.begin().await.expect("failed to create transaction"),
@@ -46,8 +48,6 @@ pub async fn update_servers_from_vec(vec: Vec<Server>, pool: Pool<Postgres>) {
 	.progress_chars("=>-");
 
 	let bar = ProgressBar::new(vec.len() as u64).with_style(style);
-
-	info!("Commiting {} servers to database", vec.len());
 
 	// Create all handles
 	let handles = vec
@@ -79,7 +79,7 @@ pub async fn update_server(
 	server: Server,
 	transaction: Arc<Mutex<Transaction<'_, Postgres>>>,
 ) -> anyhow::Result<()> {
-	let conn = &mut **transaction.lock().await;
+	let conn = &mut **transaction.lock();
 
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
 	let address = IpNet::from_str(&(server.address.to_string() + "/32"))?;
@@ -185,6 +185,8 @@ pub async fn update_server(
                 .await?;
 		}
 	}
+
+	println!("Completed!");
 
 	Ok(())
 }

@@ -2,7 +2,7 @@
 
 mod config;
 mod database;
-mod ping;
+mod protocol;
 mod response;
 mod scanner;
 mod utils;

@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::response::Server;
 use crate::utils::RunError;
-use crate::{database, ping};
+use crate::{database, protocol};
 use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::types::ipnet::IpNet;
@@ -243,7 +243,7 @@ impl Scanner {
 			.await
 			.expect("failed to acquire a semaphore");
 		let pinged_server =
-			tokio::time::timeout(TIMEOUT_SECS, ping::ping_server((&*address, port))).await??;
+			tokio::time::timeout(TIMEOUT_SECS, protocol::ping_server((&*address, port))).await??;
 		drop(permit);
 
 		// Parse response

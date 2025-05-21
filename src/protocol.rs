@@ -21,7 +21,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 
 	let mut stream = TcpStream::connect(&socket).await?;
 	stream.write_all(&PAYLOAD).await?;
-	let mut buffer = [0; 1024];
+	let mut response = [0; 1024];
 
 	// The index is used to point to the position at the start of the string.
 	// It gets increased by the amount of bytes read to decode the packet ID, Packet length
@@ -29,7 +29,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	let mut index = 0;
 
 	// Returns how many bytes were read from the stream into the buffer
-	let total_read_bytes = stream.read(&mut buffer).await?;
+	let total_read_bytes = stream.read(&mut response).await?;
 
 	if total_read_bytes == 0 {
 		debug!("[{address}] Total read bytes is 0");
@@ -37,30 +37,23 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	}
 
 	// Decode Packet length
-	index += decode_varint(&buffer).1;
+	index += decode_varint(&response).1;
 
-	// Decode Packet ID
-	// Technically since Packet ID should always be 0 and will never take more than 1 byte to encode
-	// We could ignore it entirely and just advance the index by 1
-	let (packet_id, packet_id_bytes) = decode_varint(&buffer[index as usize..]);
-	index += packet_id_bytes;
-	if packet_id != 0 {
-		debug!("[{address}] Received invalid packet id: {packet_id}");
-	}
+	// Since Packet ID should always be 0 and will never take more than 1 byte to encode
+	// We can ignore it entirely and just advance the index by 1
+	index += 1;
 
 	// Decode the string length
-	let (string_length, string_length_bytes) = decode_varint(&buffer[index as usize..]);
+	let (string_length, string_length_bytes) = decode_varint(&response[index as usize..]);
 	index += string_length_bytes;
-	// Max size for a 3 byte varint
+	if string_length == 0 {
+		debug!("[{address}] String length is 0");
+		return Err(RunError::MalformedResponse);
+	}
+
 	if string_length > 32767 {
 		debug!("[{address}] Received abnormally large string length: {string_length}");
 	}
-
-	// WARNING: Don't allocate vec size based on what the server says it needs from the varint.
-	// Allocate size based on what the server *actually* sends back, some servers can crash the
-	// program by attempting to allocate insane amounts of memory this way.
-	//
-	// Adds everything we have read so far minus the packet ID and packet length to a new vec
 
 	// Error checking
 	if index as usize > total_read_bytes {
@@ -68,7 +61,12 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 		return Err(RunError::MalformedResponse);
 	}
 
-	let mut output = Vec::from(&buffer[index as usize..total_read_bytes]);
+	// WARNING: Don't allocate vec size based on what the server says it needs from the varint.
+	// Allocate size based on what the server *actually* sends back, some servers can crash the
+	// program by attempting to allocate insane amounts of memory this way.
+	//
+	// Adds everything we have read so far minus the packet ID and packet length to a new vec
+	let mut output = Vec::from(&response[index as usize..total_read_bytes]);
 	let string_length = string_length + index as usize;
 
 	if total_read_bytes > string_length {
@@ -82,7 +80,7 @@ pub async fn ping_server((address, port): (&str, u16)) -> Result<String, RunErro
 	stream
 		// Takes everything after the end of the data we already have in the buffer
 		// Up until the end of the strings length
-		.take((string_length - total_read_bytes) as _)
+		.take((string_length - total_read_bytes) as u64)
 		.read_to_end(&mut output)
 		.await?;
 

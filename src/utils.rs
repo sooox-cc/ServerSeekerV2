@@ -1,4 +1,10 @@
+use crate::response::Server;
+use crate::scanner::{PERMITS, TIMEOUT_SECS};
+use crate::{database, protocol};
+use sqlx::{Postgres, Transaction};
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Error)]
 pub enum RunError {
@@ -105,4 +111,28 @@ impl MinecraftColorCodes {
 			UnknownValue => 'r',
 		}
 	}
+}
+
+pub async fn run_and_update(
+	address: String,
+	port: u16,
+	conn: Arc<Mutex<Transaction<'_, Postgres>>>,
+) -> Result<(), RunError> {
+	// Ping server
+	let permit = PERMITS
+		.acquire()
+		.await
+		.expect("failed to acquire a semaphore");
+
+	let pinged_server =
+		tokio::time::timeout(TIMEOUT_SECS, protocol::ping_server((&*address, port))).await??;
+	drop(permit);
+
+	// Parse response
+	let mut server = serde_json::from_str::<Server>(&pinged_server)?;
+	server.address = address;
+	server.port = port;
+
+	let _ = database::update_server(server, conn).await;
+	Ok(())
 }

@@ -1,21 +1,22 @@
 use crate::config::Config;
 use crate::response::Server;
 use crate::utils::RunError;
-use crate::{database, protocol};
+use crate::{database, protocol, utils};
 use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
-static PERMITS: Semaphore = Semaphore::const_new(1000);
-const TIMEOUT_SECS: Duration = Duration::from_secs(3);
+pub static PERMITS: Semaphore = Semaphore::const_new(1000);
+pub const TIMEOUT_SECS: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Default)]
 pub struct ScanBuilder {
@@ -169,55 +170,65 @@ impl Scanner {
 	/// Starts an instance of masscan to find new servers
 	async fn masscan(&self) {
 		let masscan_config = &self.config.masscan.config_file;
-		let masscan_output = &self.config.masscan.output_file;
 
 		if !self.config.scanner.repeat {
 			warn!("Repeat is not enabled in config file! Will only scan once!");
 		}
 
 		loop {
-			let file = OpenOptions::new()
-				.read(true)
-				.open(masscan_output)
-				.expect("couldn't open file");
+			let transaction = Arc::new(Mutex::new(
+				self.pool
+					.begin()
+					.await
+					.expect("failed to create transaction"),
+			));
 
-			let _ = Command::new("sudo")
+			let mut command = Command::new("sudo")
 				.args(["masscan", "-c", masscan_config])
+				.stdout(std::process::Stdio::piped())
 				.spawn()
-				.expect("error while executing masscan")
-				.wait()
-				.await;
+				.expect("error while executing masscan");
 
-			info!("Masscan has completed!");
+			let mut count = 0;
 
-			let reader = BufReader::new(file);
-			let mut servers = Vec::new();
+			if let Some(stdout) = command.stdout.take() {
+				let mut reader = BufReader::new(stdout).lines();
 
-			for line in reader.lines() {
-				let line = match line {
-					Ok(line) => line,
-					Err(_) => continue,
-				};
+				while let Ok(Some(line)) = reader.next_line().await {
+					let mut line = line.split_whitespace();
 
-				let mut line = line.split_whitespace();
+					let port = match line
+						.nth(3)
+						// Split on port/tcp
+						.and_then(|p| p.split('/').nth(0))
+						// Parse as u16
+						.and_then(|s| s.parse::<u16>().ok())
+					{
+						Some(port) => port,
+						None => continue,
+					};
 
-				let port = match line.nth(2).and_then(|s| s.parse::<u16>().ok()) {
-					Some(port) => port,
-					None => continue,
-				};
+					let address = match line.nth(1) {
+						Some(address) => address.to_owned(),
+						None => continue,
+					};
 
-				let address = match line.next() {
-					Some(address) => address.to_owned(),
-					None => continue,
-				};
-
-				servers.push((address, port));
+					// Ping and update server in database
+					tokio::task::spawn(utils::run_and_update(address, port, transaction.clone()));
+					count += 1;
+				}
+			} else {
+				error!("Failed to get stdout from masscan!");
+				std::process::exit(1);
 			}
 
-			let scan_results = self.scan_servers_from_vec(servers).await;
-			let completed_servers = self.print_scan_results(scan_results).await;
-
-			database::update_servers_from_vec(completed_servers, self.pool.clone()).await;
+			info!("Inserting {count} servers to database");
+			Arc::try_unwrap(transaction)
+				.unwrap()
+				.into_inner()
+				.commit()
+				.await
+				.expect("error while commiting to database");
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {

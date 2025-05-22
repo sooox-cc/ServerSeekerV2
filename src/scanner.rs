@@ -145,7 +145,9 @@ impl Scanner {
 						// a server, as some servers require the hostname and port to be set.
 						// Something that this program isn't doing yet.
 						let response = minecraft_server.simple_ping().await?;
-						let server: Server = serde_json::from_str(&response)?;
+						let mut server: Server = serde_json::from_str(&response)?;
+						server.address = minecraft_server.address;
+						server.port = minecraft_server.port;
 
 						Ok(server)
 					}
@@ -246,13 +248,17 @@ impl Scanner {
 
 					async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
 						let response = minecraft_server.simple_ping().await?;
-						let server: Server = serde_json::from_str(&response)?;
+						let mut server: Server = serde_json::from_str(&response)?;
+						server.address = minecraft_server.address;
+						server.port = minecraft_server.port;
 
 						Ok(server)
 					}
 
 					match run(minecraft_server).await {
-						Ok(server) => database::update_server(server, transaction).await.unwrap(),
+						Ok(server) => {
+							let _ = database::update_server(server, transaction).await;
+						}
 						Err(_) => (),
 					}
 				});

@@ -1,4 +1,7 @@
 use crate::config::Config;
+use crate::protocol::MinecraftServer;
+use crate::response::Server;
+use crate::utils::RunError;
 use crate::{database, utils};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -6,12 +9,12 @@ use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub static PERMITS: Semaphore = Semaphore::const_new(10000);
 pub const TIMEOUT_SECS: Duration = Duration::from_secs(3);
@@ -90,16 +93,6 @@ impl Scanner {
 
 	/// Rescan servers already found in the database
 	async fn rescan(&self) {
-		let port_start = self.config.scanner.port_range_start;
-		let port_end = self.config.scanner.port_range_end;
-		let total_ports = self.config.scanner.total_ports();
-
-		if total_ports > 10 {
-			warn!("Large amount of ports! Each extra port to scan doubles the total time taken!");
-		}
-
-		info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)");
-
 		loop {
 			let mut servers = database::fetch_servers(&self.pool).await;
 
@@ -118,31 +111,65 @@ impl Scanner {
 				.expect("Failed to get a valid row count from the database!")
 				.get(0);
 
+			let start_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+				Ok(n) => n.as_secs(),
+				Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+			};
+
 			let style = ProgressStyle::with_template(
 				"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
 			)
 			.expect("failed to create progress bar style")
 			.progress_chars("=>-");
 
-			let bar = Arc::new(ProgressBar::new(count as u64).with_style(style));
-
 			info!("Scanning {count} servers from database");
 
-			let mut handles = Vec::with_capacity(count as usize);
+			let bar = Arc::new(ProgressBar::new(count as u64).with_style(style));
+			let mut handles = Vec::new();
+
+			// Iterate over results from Postgres as they become available
 			while let Some(Ok(row)) = servers.next().await {
 				let address = row.get::<IpNet, _>("address").addr().to_string();
 				let port = row.get::<i32, _>("port") as u16;
 
-				handles.push(tokio::task::spawn(utils::run_and_update_with_progress(
-					address,
-					port,
-					transaction.clone(),
-					bar.clone(),
-				)));
+				let bar = bar.clone();
+				let conn = transaction.clone();
+
+				// Wait to acquire permit before spawning a new task
+				let permit = PERMITS.acquire().await;
+				handles.push(tokio::task::spawn(async move {
+					let minecraft_server = MinecraftServer::new(address, port);
+
+					async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
+						// In the future there will be a config option to specify the ping type for
+						// a server, as some servers require the hostname and port to be set.
+						// Something that this program isn't doing yet.
+						let response = minecraft_server.simple_ping().await?;
+						let server: Server = serde_json::from_str(&response)?;
+
+						Ok(server)
+					}
+
+					match run(minecraft_server).await {
+						Ok(server) => {
+							let _ = database::update_server(server, conn).await;
+						}
+						Err(error) => debug!("Error occurred while pinging server: {error}"),
+					}
+
+					bar.inc(1)
+				}));
 			}
 
 			futures_util::future::join_all(handles).await;
 			bar.finish_and_clear();
+
+			let end_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+				Ok(d) => d.as_secs(),
+				Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+			};
+
+			info!("Scan completed in {} seconds", end_time - start_time);
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -179,44 +206,59 @@ impl Scanner {
 				.spawn()
 				.expect("error while executing masscan");
 
-			let mut count = 0;
-
-			// Get output from masscan
-			if let Some(stdout) = command.stdout.take() {
-				let mut reader = BufReader::new(stdout).lines();
-
-				// Iterate over the lines of output from masscan
-				while let Ok(Some(line)) = reader.next_line().await {
-					let mut line = line.split_whitespace();
-
-					let port = match line
-						.nth(3)
-						// Split on port/tcp
-						.and_then(|p| p.split('/').nth(0))
-						// Parse as u16
-						.and_then(|s| s.parse::<u16>().ok())
-					{
-						Some(port) => port,
-						None => continue,
-					};
-
-					// .nth() consumes all preceding elements so address will be the 2nd
-					let address = match line.nth(1) {
-						Some(address) => address.to_owned(),
-						None => continue,
-					};
-
-					// Ping and update server in database
-					tokio::task::spawn(utils::run_and_update(address, port, transaction.clone()));
-					count += 1;
+			// Verify stdout is valid
+			let stdout = match command.stdout.take() {
+				Some(o) => o,
+				None => {
+					error!("Failed to get stdout from masscan!");
+					std::process::exit(1);
 				}
-			} else {
-				error!("Failed to get stdout from masscan!");
-				std::process::exit(1);
+			};
+
+			let mut reader = BufReader::new(stdout).lines();
+
+			// Iterate over the lines of output from masscan
+			while let Ok(Some(line)) = reader.next_line().await {
+				let mut line = line.split_whitespace();
+
+				let port = match line
+					.nth(3)
+					// Split on port/tcp
+					.and_then(|p| p.split('/').nth(0))
+					// Parse as u16
+					.and_then(|s| s.parse::<u16>().ok())
+				{
+					Some(port) => port,
+					None => continue,
+				};
+
+				// .nth() consumes all preceding elements so address will be the 2nd
+				let address = match line.nth(1) {
+					Some(address) => address.to_owned(),
+					None => continue,
+				};
+
+				let transaction = transaction.clone();
+
+				// Ping and update server in database
+				tokio::task::spawn(async move {
+					let minecraft_server = MinecraftServer::new(address, port);
+
+					async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
+						let response = minecraft_server.simple_ping().await?;
+						let server: Server = serde_json::from_str(&response)?;
+
+						Ok(server)
+					}
+
+					match run(minecraft_server).await {
+						Ok(server) => database::update_server(server, transaction).await.unwrap(),
+						Err(_) => (),
+					}
+				});
 			}
 
 			// Commit transaction to database
-			info!("Inserting {count} servers to database");
 			Arc::try_unwrap(transaction)
 				.unwrap()
 				.into_inner()

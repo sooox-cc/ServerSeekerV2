@@ -1,8 +1,6 @@
 use crate::response::Server;
 use crate::utils;
 use futures_util::stream::BoxStream;
-use futures_util::{future, FutureExt};
-use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
@@ -39,7 +37,7 @@ pub async fn update_server(
 	let conn = &mut **transaction.lock().await;
 
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
-	let address = IpNet::from_str(&(server.address.to_string() + "/32"))?;
+	let address = IpNet::from_str(&(server.address.clone() + "/32"))?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
 	// Handle server descriptions

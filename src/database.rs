@@ -1,5 +1,6 @@
 use crate::response::Server;
 use crate::utils;
+use futures_util::stream::BoxStream;
 use futures_util::{future, FutureExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::postgres::{PgQueryResult, PgRow};
@@ -13,11 +14,8 @@ use tokio::sync::Mutex;
 use tracing::info;
 
 /// Returns all servers from the database
-pub async fn fetch_servers(pool: &Pool<Postgres>) -> Vec<PgRow> {
-	sqlx::query("SELECT address, port FROM servers ORDER BY last_seen ASC")
-		.fetch_all(pool)
-		.await
-		.expect("failed to fetch servers from database")
+pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sqlx::Error>> {
+	sqlx::query("SELECT address, port FROM servers ORDER BY last_seen DESC LIMIT 1000").fetch(pool)
 }
 
 /// Deletes a server from the database
@@ -29,47 +27,6 @@ pub async fn delete_server(
 		.bind(address)
 		.execute(transaction)
 		.await
-}
-
-/// Takes in a list of completed servers and a database connection
-/// and handles all joining of tasks, progress bar updates and updating
-pub async fn update_servers_from_vec(vec: Vec<Server>, pool: Pool<Postgres>) {
-	info!("Commiting {} servers to database", vec.len());
-
-	// Transactions add multiple SQL statements into one big query
-	let transaction = Arc::new(Mutex::new(
-		pool.begin().await.expect("failed to create transaction"),
-	));
-
-	let style = ProgressStyle::with_template(
-		"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
-	)
-	.expect("failed to create progress bar style")
-	.progress_chars("=>-");
-
-	let bar = ProgressBar::new(vec.len() as u64).with_style(style);
-
-	// Create all handles
-	let handles = vec
-		.into_iter()
-		.map(|s| {
-			update_server(s, transaction.clone()).map(|r| {
-				bar.inc(1);
-				r
-			})
-		})
-		.collect::<Vec<_>>();
-
-	future::join_all(handles).await;
-
-	bar.finish_and_clear();
-
-	Arc::try_unwrap(transaction)
-		.unwrap()
-		.into_inner()
-		.commit()
-		.await
-		.expect("error while commiting to database");
 }
 
 /// Updates a single server in the database, this includes all mods

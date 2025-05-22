@@ -1,8 +1,6 @@
 use crate::config::Config;
-use crate::response::Server;
-use crate::utils::RunError;
-use crate::{database, protocol, utils};
-use futures_util::{future, FutureExt};
+use crate::{database, utils};
+use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
@@ -13,9 +11,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
-pub static PERMITS: Semaphore = Semaphore::const_new(1000);
+pub static PERMITS: Semaphore = Semaphore::const_new(10000);
 pub const TIMEOUT_SECS: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Default)]
@@ -80,41 +78,14 @@ impl Scanner {
 
 	/// Starts the scanner based on the selected mode
 	pub async fn start(&self) {
+		if !self.config.scanner.repeat {
+			warn!("Repeat is not enabled in config file! Will only scan once!");
+		}
+
 		match self.mode {
 			Mode::Discovery => self.masscan().await,
 			Mode::Rescanner => self.rescan().await,
 		}
-	}
-
-	/// Takes a list of ip addresses and ports, either from postgres or masscan
-	/// and creates a ping job for every item, then joins on them
-	pub async fn scan_servers_from_vec(
-		&self,
-		servers: Vec<(String, u16)>,
-	) -> Vec<Result<Server, RunError>> {
-		let style = ProgressStyle::with_template(
-			"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
-		)
-		.expect("failed to create progress bar style")
-		.progress_chars("=>-");
-
-		let bar = ProgressBar::new(servers.len() as u64).with_style(style);
-
-		let handles = servers
-			.into_iter()
-			.map(|s| {
-				self.run(s.0, s.1).map(|r| {
-					bar.inc(1);
-					r
-				})
-			})
-			.collect::<Vec<_>>();
-
-		let results = future::join_all(handles).await;
-
-		bar.finish_and_clear();
-
-		results.into_iter().collect()
 	}
 
 	/// Rescan servers already found in the database
@@ -127,28 +98,50 @@ impl Scanner {
 			warn!("Large amount of ports! Each extra port to scan doubles the total time taken!");
 		}
 
-		if !self.config.scanner.repeat {
-			warn!("Repeat is not enabled in config file! Will only scan once!");
-		}
-
 		info!("Scanning port range {port_start} - {port_end} ({total_ports} port(s) per host)");
 
 		loop {
-			let servers = database::fetch_servers(&self.pool)
+			let mut servers = database::fetch_servers(&self.pool).await;
+
+			// Create transaction to update each server
+			let transaction = Arc::new(Mutex::new(
+				self.pool
+					.begin()
+					.await
+					.expect("failed to create transaction"),
+			));
+
+			// Fetch how many rows are returned from database
+			let count: i64 = sqlx::query("SELECT count(address) FROM servers")
+				.fetch_one(&self.pool)
 				.await
-				.into_iter()
-				.map(|row| {
-					(
-						row.get::<IpNet, _>(0).addr().to_string(),
-						row.get::<i32, _>(1) as u16,
-					)
-				})
-				.collect::<Vec<(_, _)>>();
+				.expect("Failed to get a valid row count from the database!")
+				.get(0);
 
-			let scan_results = self.scan_servers_from_vec(servers).await;
-			let completed_servers = self.print_scan_results(scan_results).await;
+			let style = ProgressStyle::with_template(
+				"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
+			)
+			.expect("failed to create progress bar style")
+			.progress_chars("=>-");
 
-			database::update_servers_from_vec(completed_servers, self.pool.clone()).await;
+			let bar = Arc::new(ProgressBar::new(count as u64).with_style(style));
+
+			info!("Scanning {count} servers from database");
+
+			let mut handles = Vec::with_capacity(count as usize);
+			while let Some(Ok(row)) = servers.next().await {
+				let address = row.get::<IpNet, _>("address").addr().to_string();
+				let port = row.get::<i32, _>("port") as u16;
+
+				handles.push(tokio::task::spawn(utils::run_and_update_with_progress(
+					address,
+					port,
+					transaction.clone(),
+					bar.clone(),
+				)));
+			}
+
+			futures_util::future::join_all(handles).await;
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -169,13 +162,8 @@ impl Scanner {
 
 	/// Starts an instance of masscan to find new servers
 	async fn masscan(&self) {
-		let masscan_config = &self.config.masscan.config_file;
-
-		if !self.config.scanner.repeat {
-			warn!("Repeat is not enabled in config file! Will only scan once!");
-		}
-
 		loop {
+			// Create transaction to update each server
 			let transaction = Arc::new(Mutex::new(
 				self.pool
 					.begin()
@@ -183,17 +171,20 @@ impl Scanner {
 					.expect("failed to create transaction"),
 			));
 
+			// Spawn masscan
 			let mut command = Command::new("sudo")
-				.args(["masscan", "-c", masscan_config])
+				.args(["masscan", "-c", &self.config.masscan.config_file])
 				.stdout(std::process::Stdio::piped())
 				.spawn()
 				.expect("error while executing masscan");
 
 			let mut count = 0;
 
+			// Get output from masscan
 			if let Some(stdout) = command.stdout.take() {
 				let mut reader = BufReader::new(stdout).lines();
 
+				// Iterate over the lines of output from masscan
 				while let Ok(Some(line)) = reader.next_line().await {
 					let mut line = line.split_whitespace();
 
@@ -208,6 +199,7 @@ impl Scanner {
 						None => continue,
 					};
 
+					// .nth() consumes all preceding elements so address will be the 2nd
 					let address = match line.nth(1) {
 						Some(address) => address.to_owned(),
 						None => continue,
@@ -222,6 +214,7 @@ impl Scanner {
 				std::process::exit(1);
 			}
 
+			// Commit transaction to database
 			info!("Inserting {count} servers to database");
 			Arc::try_unwrap(transaction)
 				.unwrap()
@@ -245,51 +238,5 @@ impl Scanner {
 				tokio::time::sleep(Duration::from_secs(self.config.scanner.scan_delay)).await;
 			}
 		}
-	}
-
-	async fn run(&self, address: String, port: u16) -> Result<Server, RunError> {
-		// Ping server
-		let permit = PERMITS
-			.acquire()
-			.await
-			.expect("failed to acquire a semaphore");
-		let pinged_server =
-			tokio::time::timeout(TIMEOUT_SECS, protocol::ping_server((&*address, port))).await??;
-		drop(permit);
-
-		// Parse response
-		let mut server = serde_json::from_str::<Server>(&pinged_server)?;
-		server.address = address;
-		server.port = port;
-
-		Ok(server)
-	}
-
-	pub async fn print_scan_results(&self, results: Vec<Result<Server, RunError>>) -> Vec<Server> {
-		debug!("results_len = {}", results.len());
-
-		let (servers, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
-
-		// Print errors
-		if !errors.is_empty() {
-			warn!("Scan returned {} total errors!", errors.len());
-			let mut counts = [0u32; 6];
-			for e in errors.into_iter().filter_map(Result::err) {
-				let i: usize = e.into();
-				counts[i] += 1;
-			}
-
-			warn!("{} errors while parsing addresses", counts[0]);
-			warn!("{} I/0 Errors", counts[1]);
-			warn!("{} malformed responses", counts[2]);
-			warn!("{} errors while parsing responses", counts[3]);
-			warn!("{} servers timed out", counts[4]);
-			info!("{} servers removed due to opting out", counts[5])
-		}
-
-		servers
-			.into_iter()
-			.filter_map(Result::ok)
-			.collect::<Vec<_>>()
 	}
 }

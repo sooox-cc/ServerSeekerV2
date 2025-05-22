@@ -38,7 +38,6 @@ pub struct ScannerConfig {
 #[derive(Deserialize, Debug)]
 pub struct Masscan {
 	pub config_file: String,
-	pub output_file: String,
 }
 
 impl Default for Config {
@@ -63,7 +62,6 @@ impl Default for Config {
 			},
 			masscan: Masscan {
 				config_file: "masscan.conf".to_string(),
-				output_file: "servers.json".to_string(),
 			},
 		}
 	}

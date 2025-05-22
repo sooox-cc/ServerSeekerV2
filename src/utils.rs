@@ -1,6 +1,7 @@
 use crate::response::Server;
 use crate::scanner::{PERMITS, TIMEOUT_SECS};
 use crate::{database, protocol};
+use indicatif::ProgressBar;
 use sqlx::{Postgres, Transaction};
 use std::sync::Arc;
 use thiserror::Error;
@@ -135,4 +136,14 @@ pub async fn run_and_update(
 
 	let _ = database::update_server(server, conn).await;
 	Ok(())
+}
+
+pub async fn run_and_update_with_progress(
+	address: String,
+	port: u16,
+	conn: Arc<Mutex<Transaction<'_, Postgres>>>,
+	bar: Arc<ProgressBar>,
+) {
+	let _ = run_and_update(address, port, conn).await;
+	bar.inc(1);
 }

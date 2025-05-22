@@ -142,6 +142,7 @@ impl Scanner {
 			}
 
 			futures_util::future::join_all(handles).await;
+			bar.finish_and_clear();
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {

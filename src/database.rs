@@ -15,7 +15,7 @@ use tracing::info;
 
 /// Returns all servers from the database
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sqlx::Error>> {
-	sqlx::query("SELECT address, port FROM servers ORDER BY last_seen DESC LIMIT 1000").fetch(pool)
+	sqlx::query("SELECT address, port FROM servers ORDER BY last_seen ASC").fetch(pool)
 }
 
 /// Deletes a server from the database

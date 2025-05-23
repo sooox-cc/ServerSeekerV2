@@ -46,7 +46,7 @@ impl ScanBuilder {
 			mode: self.mode,
 			pool: {
 				match self.pool {
-					Some(pool) => pool,
+					Some(pool) => Arc::new(pool),
 					None => {
 						error!("Failed to connect to database!");
 						std::process::exit(1);
@@ -68,7 +68,7 @@ pub enum Mode {
 pub struct Scanner {
 	pub config: Config,
 	pub mode: Mode,
-	pub pool: Pool<Postgres>,
+	pub pool: Arc<Pool<Postgres>>,
 }
 
 impl Scanner {
@@ -93,7 +93,6 @@ impl Scanner {
 	async fn rescan(&self) {
 		loop {
 			let mut servers = database::fetch_servers(&self.pool).await;
-			let pool = Arc::new(self.pool.clone());
 
 			let start_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(n) => n.as_secs(),
@@ -109,7 +108,7 @@ impl Scanner {
 
 				// Wait to acquire permit before spawning a new task
 				let permit = PERMITS.acquire().await;
-				handles.push(task_wrapper(address, port, pool.clone()));
+				handles.push(task_wrapper(address, port, self.pool.clone()));
 			}
 
 			futures_util::future::join_all(handles).await;
@@ -141,8 +140,6 @@ impl Scanner {
 	/// Starts an instance of masscan to find new servers
 	async fn masscan(&self) {
 		loop {
-			let pool = Arc::new(self.pool.clone());
-
 			// Spawn masscan
 			let mut command = Command::new("sudo")
 				.args(["masscan", "-c", &self.config.masscan.config_file])
@@ -183,7 +180,7 @@ impl Scanner {
 				};
 
 				// Spawn a pinging task for each server found
-				task_wrapper(address, port, pool.clone());
+				task_wrapper(address, port, self.pool.clone());
 			}
 
 			// Quit if only one scan is requested in config

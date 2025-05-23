@@ -14,7 +14,10 @@ pub enum RunError {
 	TimedOut(#[from] tokio::time::error::Elapsed),
 	#[error("Server opted out of scanning")]
 	ServerOptOut,
+	#[error("Error while updating server in database")]
+	DatabaseError(#[from] sqlx::Error),
 }
+
 impl Into<usize> for RunError {
 	fn into(self) -> usize {
 		use RunError::*;
@@ -26,6 +29,7 @@ impl Into<usize> for RunError {
 			ParseResponse(_) => 3,
 			TimedOut(_) => 4,
 			ServerOptOut => 5,
+			DatabaseError(_) => 6,
 		}
 	}
 }

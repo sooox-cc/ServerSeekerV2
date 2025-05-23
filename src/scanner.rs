@@ -1,10 +1,9 @@
 use crate::config::Config;
+use crate::database;
 use crate::protocol::MinecraftServer;
 use crate::response::Server;
 use crate::utils::RunError;
-use crate::{database, utils};
 use futures_util::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::types::ipnet::IpNet;
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
@@ -12,7 +11,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
@@ -95,36 +93,13 @@ impl Scanner {
 	async fn rescan(&self) {
 		loop {
 			let mut servers = database::fetch_servers(&self.pool).await;
-
-			// Create transaction to update each server
-			let transaction = Arc::new(Mutex::new(
-				self.pool
-					.begin()
-					.await
-					.expect("failed to create transaction"),
-			));
-
-			// Fetch how many rows are returned from database
-			let count: i64 = sqlx::query("SELECT count(address) FROM servers")
-				.fetch_one(&self.pool)
-				.await
-				.expect("Failed to get a valid row count from the database!")
-				.get(0);
+			let pool = Arc::new(self.pool.clone());
 
 			let start_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(n) => n.as_secs(),
 				Err(_) => panic!("SystemTime before UNIX EPOCH!"),
 			};
 
-			let style = ProgressStyle::with_template(
-				"[{elapsed}] [{bar:40.white/blue}] {pos:>7}/{len:7} ETA {eta}",
-			)
-			.expect("failed to create progress bar style")
-			.progress_chars("=>-");
-
-			info!("Scanning {count} servers from database");
-
-			let bar = Arc::new(ProgressBar::new(count as u64).with_style(style));
 			let mut handles = Vec::new();
 
 			// Iterate over results from Postgres as they become available
@@ -132,39 +107,12 @@ impl Scanner {
 				let address = row.get::<IpNet, _>("address").addr().to_string();
 				let port = row.get::<i32, _>("port") as u16;
 
-				let bar = bar.clone();
-				let conn = transaction.clone();
-
 				// Wait to acquire permit before spawning a new task
 				let permit = PERMITS.acquire().await;
-				handles.push(tokio::task::spawn(async move {
-					let minecraft_server = MinecraftServer::new(address, port);
-
-					async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
-						// In the future there will be a config option to specify the ping type for
-						// a server, as some servers require the hostname and port to be set.
-						// Something that this program isn't doing yet.
-						let response = minecraft_server.simple_ping().await?;
-						let mut server: Server = serde_json::from_str(&response)?;
-						server.address = minecraft_server.address;
-						server.port = minecraft_server.port;
-
-						Ok(server)
-					}
-
-					match run(minecraft_server).await {
-						Ok(server) => {
-							let _ = database::update_server(server, conn).await;
-						}
-						Err(error) => debug!("Error occurred while pinging server: {error}"),
-					}
-
-					bar.inc(1)
-				}));
+				handles.push(task_wrapper(address, port, pool.clone()));
 			}
 
 			futures_util::future::join_all(handles).await;
-			bar.finish_and_clear();
 
 			let end_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(d) => d.as_secs(),
@@ -193,13 +141,7 @@ impl Scanner {
 	/// Starts an instance of masscan to find new servers
 	async fn masscan(&self) {
 		loop {
-			// Create transaction to update each server
-			let transaction = Arc::new(Mutex::new(
-				self.pool
-					.begin()
-					.await
-					.expect("failed to create transaction"),
-			));
+			let pool = Arc::new(self.pool.clone());
 
 			// Spawn masscan
 			let mut command = Command::new("sudo")
@@ -240,37 +182,9 @@ impl Scanner {
 					None => continue,
 				};
 
-				let transaction = transaction.clone();
-
-				// Ping and update server in database
-				tokio::task::spawn(async move {
-					let minecraft_server = MinecraftServer::new(address, port);
-
-					async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
-						let response = minecraft_server.simple_ping().await?;
-						let mut server: Server = serde_json::from_str(&response)?;
-						server.address = minecraft_server.address;
-						server.port = minecraft_server.port;
-
-						Ok(server)
-					}
-
-					match run(minecraft_server).await {
-						Ok(server) => {
-							let _ = database::update_server(server, transaction).await;
-						}
-						Err(_) => (),
-					}
-				});
+				// Spawn a pinging task for each server found
+				task_wrapper(address, port, pool.clone());
 			}
-
-			// Commit transaction to database
-			Arc::try_unwrap(transaction)
-				.unwrap()
-				.into_inner()
-				.commit()
-				.await
-				.expect("error while commiting to database");
 
 			// Quit if only one scan is requested in config
 			if !self.config.scanner.repeat {
@@ -288,4 +202,35 @@ impl Scanner {
 			}
 		}
 	}
+}
+
+fn task_wrapper(
+	address: String,
+	port: u16,
+	conn: Arc<Pool<Postgres>>,
+) -> tokio::task::JoinHandle<()> {
+	tokio::task::spawn(async move {
+		let minecraft_server = MinecraftServer::new(address, port);
+
+		async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
+			// In the future there will be a config option to specify the ping type for
+			// a server, as some servers require the hostname and port to be set.
+			// Something that this program isn't doing yet.
+			let response = minecraft_server.simple_ping().await?;
+
+			// Assign address and port to the server struct
+			let mut server: Server = serde_json::from_str(&response)?;
+			server.address = minecraft_server.address;
+			server.port = minecraft_server.port;
+
+			Ok(server)
+		}
+
+		match run(minecraft_server).await {
+			Ok(server) => {
+				let _ = database::update_server(server, conn).await;
+			}
+			Err(error) => debug!("Error occurred while pinging server: {error}"),
+		}
+	})
 }

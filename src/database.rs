@@ -1,14 +1,13 @@
 use crate::response::Server;
-use crate::utils;
+use crate::utils::RunError;
 use futures_util::stream::BoxStream;
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
-use sqlx::{PgConnection, Pool, Postgres, Transaction};
+use sqlx::{Pool, Postgres};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
 use tracing::info;
 
 /// Returns all servers from the database
@@ -19,23 +18,18 @@ pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sql
 /// Deletes a server from the database
 pub async fn delete_server(
 	address: String,
-	transaction: &mut PgConnection,
+	conn: Arc<Pool<Postgres>>,
 ) -> Result<PgQueryResult, sqlx::Error> {
 	sqlx::query("DELETE FROM servers WHERE address = $1")
 		.bind(address)
-		.execute(transaction)
+		.execute(&*conn)
 		.await
 }
 
 /// Updates a single server in the database, this includes all mods
 /// and players that come with it. Will also remove a server from the
 /// database if it has requested to be removed
-pub async fn update_server(
-	server: Server,
-	transaction: Arc<Mutex<Transaction<'_, Postgres>>>,
-) -> anyhow::Result<()> {
-	let conn = &mut **transaction.lock().await;
-
+pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow::Result<()> {
 	// SQLx requires each IP address to be in CIDR notation to add to Postgres
 	let address = IpNet::from_str(&(server.address.clone() + "/32"))?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
@@ -44,19 +38,19 @@ pub async fn update_server(
 	let description_raw = server
 		.description_raw
 		.as_ref()
-		.ok_or(utils::RunError::MalformedResponse)?;
+		.ok_or(RunError::MalformedResponse)?;
 	let description_formatted = server.build_server_description(description_raw);
 
+	// Delete server if they opted out
 	if server.check_opt_out() {
-		let modified_rows = delete_server(address.to_string(), conn)
+		let modified_rows = delete_server(address.addr().to_string(), conn)
 			.await?
 			.rows_affected();
 		info!(
-			"Removing {} from the database due to opt out! ({} rows modified)",
-			address, modified_rows
+			"Removing {address} from the database due to opt out! ({modified_rows} rows modified)"
 		);
 
-		return Err(utils::RunError::ServerOptOut)?;
+		return Err(RunError::ServerOptOut)?;
 	}
 
 	// description_raw is for storing raw JSON descriptions
@@ -106,7 +100,7 @@ pub async fn update_server(
 	.bind(timestamp)
 	.bind(server.players.online)
 	.bind(server.players.max)
-	.execute(&mut *conn)
+	.execute(&*conn)
 	.await?;
 
 	if let Some(sample) = server.players.sample {
@@ -121,7 +115,7 @@ pub async fn update_server(
                     .bind(player.name)
                     .bind(timestamp)
                     .bind(timestamp)
-                    .execute(&mut *conn)
+                    .execute(&*conn)
                     .await?;
 			}
 		}
@@ -136,7 +130,7 @@ pub async fn update_server(
                 .bind(mods.version)
                 .bind(timestamp)
                 .bind(timestamp)
-                .execute(&mut *conn)
+                .execute(&*conn)
                 .await?;
 		}
 	}

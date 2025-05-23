@@ -8,7 +8,6 @@ use sqlx::{Pool, Postgres};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::info;
 
 /// Returns all servers from the database
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sqlx::Error>> {
@@ -34,29 +33,18 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 	let address = IpNet::from_str(&(server.address.clone() + "/32"))?;
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i32;
 
-	// Handle server descriptions
-	let description_raw = server
-		.description_raw
-		.as_ref()
-		.ok_or(RunError::MalformedResponse)?;
-	let description_formatted = server.build_server_description(description_raw);
+	// Format description if it exists
+	let formatted = match server.description_raw.as_ref() {
+		Some(v) => Some(server.build_formatted_description(v)),
+		None => None,
+	};
 
-	// Delete server if they opted out
+	// Delete server if it's opted out
 	if server.check_opt_out() {
-		let modified_rows = delete_server(address.addr().to_string(), conn)
-			.await?
-			.rows_affected();
-		info!(
-			"Removing {address} from the database due to opt out! ({modified_rows} rows modified)"
-		);
-
+		delete_server(address.addr().to_string(), conn).await?;
 		return Err(RunError::ServerOptOut)?;
 	}
 
-	// description_raw is for storing raw JSON descriptions
-	// useful for applications that want to parse descriptions in their own way
-	// description_formatted is for pre-formatted descriptions
-	// useful for regex searches and for applications that just quickly need a servers description
 	sqlx::query(
 		"INSERT INTO servers (
 		address,
@@ -92,8 +80,12 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 	.bind(server.version.name)
 	.bind(server.version.protocol)
 	.bind(server.favicon)
-	.bind(description_raw)
-	.bind(description_formatted)
+	// description_raw is for storing raw JSON descriptions
+	// useful for applications that want to parse descriptions in their own way
+	.bind(server.description_raw)
+	// description_formatted is for pre-formatted descriptions
+	// useful for regex searches and for applications that just quickly need a servers description
+	.bind(formatted)
 	.bind(server.prevents_reports)
 	.bind(server.enforces_secure_chat)
 	.bind(timestamp)

@@ -116,14 +116,14 @@ impl Server {
 	}
 
 	#[rustfmt::skip]
-	pub fn build_server_description(&self, value: &Value) -> String {
+	pub fn build_formatted_description(&self, value: &Value) -> String {
 		let mut output = String::new();
 
 		match value {
 			Value::String(s) => output.push_str(s),
 			Value::Array(array) => {
 				for value in array {
-					output.push_str(&self.build_server_description(value));
+					output.push_str(&self.build_formatted_description(value));
 				}
 			}
 			Value::Object(object) => {
@@ -177,7 +177,7 @@ impl Server {
 
 				if object.contains_key("extra") {
 					if let Some(extra) = object.get("extra") {
-						output.push_str(&self.build_server_description(extra));
+						output.push_str(&self.build_formatted_description(extra));
 					}
 				}
 			}

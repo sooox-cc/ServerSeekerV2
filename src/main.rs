@@ -56,7 +56,12 @@ async fn main() {
 		// Turn off slow statement logging, this clogs the console
 		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
 
-	let pool = PgPoolOptions::new().connect_with(options).await.ok();
+	let pool = PgPoolOptions::new()
+		// Refresh connections every 24 hours
+		.max_lifetime(Duration::from_secs(86400))
+		.connect_with(options)
+		.await
+		.ok();
 
 	Scanner::new()
 		.config(config)

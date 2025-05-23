@@ -111,9 +111,11 @@ Download the executable from the Releases tab. (Soon)
    ```
 3. Run the scanner
    ```sh
-   ./ServerSeekerV2
+   ./ServerSeekerV2 --mode <mode>
    ```
-4. Enjoy
+4. There are two modes to choose from, **rescanner** and **discovery**. Discovery uses masscan to find new servers while
+   rescanner rescans the database. For discovery mode it is required that your masscan config looks like the provided
+   example. SSV2 reads lines from masscan's standard output to scan servers as they are found.
 
 ## Contributing
 

@@ -29,6 +29,12 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features.
 ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
 
+[Discord Server](https://discord.gg/UA5kyprunc)
+
+[Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz)
+
+(The two are bridged together so you only need to join one)
+
 ## Features
 
 - Rescanning. SSV2 Can rescan already found servers for the most up-to-date results (updates every few minutes)

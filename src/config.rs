@@ -7,9 +7,10 @@ use tracing::error;
 #[derive(Deserialize, Debug)]
 pub struct Config {
 	pub database: Database,
-	pub player_tracking: PlayerTracking,
 	pub scanner: ScannerConfig,
 	pub masscan: Masscan,
+	pub player_tracking: PlayerTracking,
+	pub country_tracking: CountryTracking,
 }
 
 #[derive(Deserialize, Debug)]
@@ -19,12 +20,6 @@ pub struct Database {
 	pub table: String,
 	pub user: String,
 	pub password: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct PlayerTracking {
-	pub enabled: bool,
-	pub players: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -40,6 +35,19 @@ pub struct Masscan {
 	pub config_file: String,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct PlayerTracking {
+	pub enabled: bool,
+	pub players: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CountryTracking {
+	pub enabled: bool,
+	pub update_frequency: u64,
+	pub ipinfo_token: String,
+}
+
 impl Default for Config {
 	fn default() -> Self {
 		Config {
@@ -50,10 +58,6 @@ impl Default for Config {
 				user: "postgres".to_string(),
 				password: "password".to_string(),
 			},
-			player_tracking: PlayerTracking {
-				enabled: false,
-				players: vec![],
-			},
 			scanner: ScannerConfig {
 				repeat: true,
 				scan_delay: 60,
@@ -62,6 +66,15 @@ impl Default for Config {
 			},
 			masscan: Masscan {
 				config_file: "masscan.conf".to_string(),
+			},
+			player_tracking: PlayerTracking {
+				enabled: false,
+				players: vec![],
+			},
+			country_tracking: CountryTracking {
+				enabled: false,
+				update_frequency: 48,
+				ipinfo_token: "".to_string(),
 			},
 		}
 	}

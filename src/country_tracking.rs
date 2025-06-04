@@ -4,6 +4,7 @@ use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::redirect::Policy;
+use sqlx::{PgPool, Pool, Postgres};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -82,4 +83,20 @@ pub async fn download_database(config: &Config) -> anyhow::Result<File> {
 			response.status().canonical_reason()
 		)
 	}
+}
+
+pub async fn create_tables(pool: &PgPool) {
+	sqlx::query(
+		"CREATE TABLE IF NOT EXISTS countries (
+    		network CIDR,
+    		country VARCHAR(255),
+    		country_code CHAR(2),
+    		asn VARCHAR(16),
+    		company VARCHAR(255),
+    		PRIMARY KEY(network)
+    	)",
+	)
+	.execute(pool)
+	.await
+	.unwrap();
 }

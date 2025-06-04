@@ -67,6 +67,11 @@ async fn main() {
 	if config.country_tracking.enabled {
 		info!("Downloading latest version of IPInfo database...");
 		country_tracking::download_database(&config).await.unwrap();
+
+		if let Some(pool) = &pool {
+			info!("Checking integrity of countries table...");
+			country_tracking::create_tables(pool).await;
+		}
 	}
 
 	// Scanner::new()

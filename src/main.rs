@@ -1,6 +1,7 @@
 #![feature(let_chains)]
 
 mod config;
+mod country_tracking;
 mod database;
 mod protocol;
 mod response;
@@ -63,11 +64,16 @@ async fn main() {
 		.await
 		.ok();
 
-	Scanner::new()
-		.config(config)
-		.mode(arguments.mode)
-		.pool(pool)
-		.build()
-		.start()
-		.await;
+	if config.country_tracking.enabled {
+		info!("Downloading latest version of IPInfo database...");
+		country_tracking::download_database(&config).await.unwrap();
+	}
+
+	// Scanner::new()
+	// 	.config(config)
+	// 	.mode(arguments.mode)
+	// 	.pool(pool)
+	// 	.build()
+	// 	.start()
+	// 	.await;
 }

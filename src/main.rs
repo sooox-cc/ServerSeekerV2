@@ -71,6 +71,7 @@ async fn main() {
 		if let Some(pool) = &pool {
 			info!("Checking integrity of countries table...");
 			country_tracking::create_tables(pool).await;
+			country_tracking::insert_json_to_table(pool).await.unwrap();
 		}
 	}
 

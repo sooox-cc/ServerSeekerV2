@@ -2,17 +2,30 @@ use crate::config::Config;
 use anyhow::bail;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
 use reqwest::redirect::Policy;
-use sqlx::{PgPool, Pool, Postgres};
+use serde::Deserialize;
+use sqlx::types::ipnet::IpNet;
+use sqlx::PgPool;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::str::FromStr;
 use std::time::Duration;
-use tracing::info;
+use tracing::{debug, info};
 
 const DOWNLOAD_URL: &str = "https://ipinfo.io/data/ipinfo_lite.json.gz";
 
-pub async fn download_database(config: &Config) -> anyhow::Result<File> {
+#[derive(Deserialize, Debug)]
+struct CountryRow {
+	network: String,
+	country: String,
+	country_code: String,
+	asn: Option<String>,
+	#[serde(rename = "as_name")]
+	company: Option<String>,
+}
+
+pub async fn download_database(config: &Config) -> anyhow::Result<()> {
 	let client = reqwest::ClientBuilder::new()
 		.gzip(true)
 		.redirect(Policy::limited(3))
@@ -75,7 +88,7 @@ pub async fn download_database(config: &Config) -> anyhow::Result<File> {
 		// Delete compressed file
 		std::fs::remove_file("ipinfo.json.gz")?;
 
-		Ok(file)
+		Ok(())
 	} else {
 		bail!(
 			"IPInfo download failed: {} {:?}",
@@ -85,12 +98,34 @@ pub async fn download_database(config: &Config) -> anyhow::Result<File> {
 	}
 }
 
+async fn parse_json_to_vec(string: String) -> serde_json::Result<Vec<CountryRow>> {
+	serde_json::from_str(&format!(
+		"[{}]",
+		string
+			// Split at the end of every object
+			.split("}\n{")
+			// Skip all IPv6 netblocks
+			.map_while(|x| {
+				match x.contains("::") {
+					true => None,
+					false => Some(x),
+				}
+			})
+			.map(|s| s.trim_matches(&['\n', '{', '}'][..]))
+			.map(|s| format!("{{{}}}", s))
+			// Collect everything
+			.collect::<Vec<_>>()
+			// Join everything with commas
+			.join(",")
+	))
+}
+
 pub async fn create_tables(pool: &PgPool) {
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS countries (
     		network CIDR,
     		country VARCHAR(255),
-    		country_code CHAR(2),
+    		country_code VARCHAR(2),
     		asn VARCHAR(16),
     		company VARCHAR(255),
     		PRIMARY KEY(network)
@@ -99,4 +134,38 @@ pub async fn create_tables(pool: &PgPool) {
 	.execute(pool)
 	.await
 	.unwrap();
+}
+
+pub async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {
+	let mut file = File::open("ipinfo.json")?;
+	let mut string = String::new();
+	file.read_to_string(&mut string)?;
+
+	let json = parse_json_to_vec(string).await?;
+	info!("JSON Parsed successfully, Inserting rows into database...");
+
+	let mut tx = pool.begin().await?;
+	let bar = ProgressBar::new(json.len() as u64);
+
+	for netblock in json.into_iter().progress_with(bar) {
+		if let Ok(cidr) = IpNet::from_str(&netblock.network) {
+			let result = sqlx::query("INSERT INTO countries VALUES ($1, $2, $3, $4, $5)")
+				.bind(cidr)
+				.bind(netblock.country)
+				.bind(netblock.country_code)
+				.bind(netblock.asn)
+				.bind(netblock.company)
+				.execute(&mut *tx)
+				.await;
+
+			if let Err(e) = result {
+				debug!("Error while updating row in countries table {e}");
+			}
+		};
+	}
+
+	info!("Commiting results to database");
+	tx.commit().await?;
+
+	Ok(())
 }

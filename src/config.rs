@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{ErrorKind, Read};
 use tracing::error;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Config {
 	pub database: Database,
 	pub scanner: ScannerConfig,
@@ -13,7 +13,7 @@ pub struct Config {
 	pub country_tracking: CountryTracking,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Database {
 	pub host: String,
 	pub port: u16,
@@ -22,7 +22,7 @@ pub struct Database {
 	pub password: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct ScannerConfig {
 	pub repeat: bool,
 	pub scan_delay: u64,
@@ -30,18 +30,18 @@ pub struct ScannerConfig {
 	pub port_range_end: u16,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Masscan {
 	pub config_file: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct PlayerTracking {
 	pub enabled: bool,
 	pub players: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct CountryTracking {
 	pub enabled: bool,
 	pub update_frequency: u64,

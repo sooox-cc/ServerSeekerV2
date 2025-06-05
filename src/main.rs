@@ -64,15 +64,14 @@ async fn main() {
 		.await
 		.ok();
 
-	if config.country_tracking.enabled {
-		info!("Downloading latest version of IPInfo database...");
-		country_tracking::download_database(&config).await.unwrap();
-
-		if let Some(pool) = &pool {
-			info!("Checking integrity of countries table...");
-			country_tracking::create_tables(pool).await;
-			country_tracking::insert_json_to_table(pool).await.unwrap();
-		}
+	// Spawn a task to update the country info database everyday
+	if let Some(pool) = &pool
+		&& config.country_tracking.enabled
+	{
+		tokio::task::spawn(country_tracking::country_tracking(
+			pool.clone(),
+			config.clone(),
+		));
 	}
 
 	// Scanner::new()

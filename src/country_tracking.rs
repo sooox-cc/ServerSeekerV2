@@ -3,7 +3,6 @@ use anyhow::bail;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressIterator, ProgressStyle};
-use reqwest::redirect::Policy;
 use serde::Deserialize;
 use sqlx::types::ipnet::IpNet;
 use sqlx::PgPool;
@@ -25,9 +24,23 @@ struct CountryRow {
 	company: Option<String>,
 }
 
-pub async fn download_database(config: &Config) -> anyhow::Result<()> {
+pub async fn country_tracking(pool: PgPool, config: Config) -> anyhow::Result<()> {
+	loop {
+		download_database(&config).await?;
+		create_tables(&pool).await;
+		insert_json_to_table(&pool).await?;
+
+		// Sleep
+		tokio::time::sleep(Duration::from_secs(
+			config.country_tracking.update_frequency * 60 * 60,
+		))
+		.await;
+	}
+}
+
+async fn download_database(config: &Config) -> anyhow::Result<()> {
 	let url = format!("{}{}", DOWNLOAD_URL, config.country_tracking.ipinfo_token);
-	let response = reqwest::get("https://funtimes909.xyz/ipinfo.json.gz").await?;
+	let response = reqwest::get(url).await?;
 
 	// If response is OK write to file and unzip
 	if response.status().is_success() {
@@ -110,7 +123,7 @@ async fn parse_json_to_vec(string: String) -> serde_json::Result<Vec<CountryRow>
 	))
 }
 
-pub async fn create_tables(pool: &PgPool) {
+async fn create_tables(pool: &PgPool) {
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS countries (
     		network CIDR,
@@ -126,7 +139,7 @@ pub async fn create_tables(pool: &PgPool) {
 	.unwrap();
 }
 
-pub async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {
+async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {
 	let mut file = File::open("ipinfo.json")?;
 	let mut string = String::new();
 	file.read_to_string(&mut string)?;

@@ -4,10 +4,27 @@ use futures_util::stream::BoxStream;
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::IpNet;
 use sqlx::types::Uuid;
-use sqlx::{Pool, Postgres};
+use sqlx::{FromRow, Pool, Postgres, Row};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Debug)]
+struct AddressInfo {
+	country: String,
+	country_code: String,
+	asn: String,
+}
+
+impl FromRow<'_, PgRow> for AddressInfo {
+	fn from_row(row: &PgRow) -> Result<Self, sqlx::Error> {
+		Ok(Self {
+			country: row.try_get("country")?,
+			country_code: row.try_get("country_code")?,
+			asn: row.try_get("asn")?,
+		})
+	}
+}
 
 /// Returns all servers from the database
 pub async fn fetch_servers(pool: &Pool<Postgres>) -> BoxStream<Result<PgRow, sqlx::Error>> {
@@ -23,6 +40,18 @@ pub async fn delete_server(
 		.bind(address)
 		.execute(&*conn)
 		.await
+}
+
+async fn get_address_info(
+	address: &IpNet,
+	conn: &Arc<Pool<Postgres>>,
+) -> Result<AddressInfo, sqlx::Error> {
+	Ok(
+		sqlx::query_as("SELECT country, country_code, asn FROM countries WHERE $1 <<= network")
+			.bind(address)
+			.fetch_one(&**conn)
+			.await?,
+	)
 }
 
 /// Updates a single server in the database, this includes all mods
@@ -45,6 +74,8 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 		return Err(RunError::ServerOptOut)?;
 	}
 
+	let address_information = get_address_info(&address, &conn).await?;
+
 	sqlx::query(
 		"INSERT INTO servers (
 		address,
@@ -60,7 +91,9 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 		first_seen,
 		last_seen,
 		online_players,
-		max_players) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		max_players,
+        country,
+    	asn) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     	ON CONFLICT (address, port) DO UPDATE SET
     	software = EXCLUDED.software,
     	version = EXCLUDED.version,
@@ -72,7 +105,9 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
     	enforces_secure_chat = EXCLUDED.enforces_secure_chat,
     	last_seen = EXCLUDED.last_seen,
     	online_players = EXCLUDED.online_players,
-    	max_players = EXCLUDED.max_players",
+    	max_players = EXCLUDED.max_players,
+    	country = EXCLUDED.country,
+    	asn = EXCLUDED.asn",
 	)
 	.bind(&address)
 	.bind(server.port as i32)
@@ -92,6 +127,8 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 	.bind(timestamp)
 	.bind(server.players.online)
 	.bind(server.players.max)
+	.bind(address_information.country_code)
+	.bind(address_information.asn)
 	.execute(&*conn)
 	.await?;
 

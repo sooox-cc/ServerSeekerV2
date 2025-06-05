@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use tracing::{debug, info};
 
-const DOWNLOAD_URL: &str = "https://ipinfo.io/data/ipinfo_lite.json.gz";
+const DOWNLOAD_URL: &str = "https://ipinfo.io/data/ipinfo_lite.json.gz?token=";
 
 #[derive(Deserialize, Debug)]
 struct CountryRow {
@@ -26,19 +26,8 @@ struct CountryRow {
 }
 
 pub async fn download_database(config: &Config) -> anyhow::Result<()> {
-	let client = reqwest::ClientBuilder::new()
-		.gzip(true)
-		.redirect(Policy::limited(3))
-		.connect_timeout(Duration::from_secs(10))
-		.build()?;
-
-	let url = format!(
-		"{}{}{}",
-		DOWNLOAD_URL, "?token=", config.country_tracking.ipinfo_token
-	);
-
-	// Send request
-	let response = client.get(url).send().await?;
+	let url = format!("{}{}", DOWNLOAD_URL, config.country_tracking.ipinfo_token);
+	let response = reqwest::get("https://funtimes909.xyz/ipinfo.json.gz").await?;
 
 	// If response is OK write to file and unzip
 	if response.status().is_success() {
@@ -46,7 +35,7 @@ pub async fn download_database(config: &Config) -> anyhow::Result<()> {
 		// IPInfo should always supply this
 		let content_length = match response.content_length() {
 			Some(len) => len,
-			None => bail!("Content-Length was not set!"),
+			None => bail!("Content-Length header was not set!"),
 		};
 
 		let mut downloaded: u64 = 0;
@@ -54,12 +43,13 @@ pub async fn download_database(config: &Config) -> anyhow::Result<()> {
 		let mut reader = response.bytes_stream();
 
 		let style = ProgressStyle::with_template(
-			"[{elapsed_precise}] [{bar:40.white/blue}] {bytes}/{total_bytes}",
+			"[{elapsed_precise}] [{bar:40.white/blue}] {bytes}/{total_bytes} {msg}",
 		)
 		.expect("failed to create progress bar style")
 		.progress_chars("=>-");
 
 		let bar = ProgressBar::new(content_length).with_style(style);
+		bar.set_message("Downloading the latest version of the IPInfo database...");
 
 		while let Some(Ok(chunk)) = reader.next().await {
 			output_file.write_all(&chunk)?;
@@ -71,7 +61,7 @@ pub async fn download_database(config: &Config) -> anyhow::Result<()> {
 		}
 
 		// Done
-		bar.finish_with_message("Finished downloading IPInfo database to ipinfo.json.gz");
+		bar.finish_with_message("Finished!");
 		info!("Decompressing output file...");
 
 		// Decompress file
@@ -142,21 +132,37 @@ pub async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {
 	file.read_to_string(&mut string)?;
 
 	let json = parse_json_to_vec(string).await?;
-	info!("JSON Parsed successfully, Inserting rows into database...");
+	info!("JSON Parsed successfully.");
 
-	let mut tx = pool.begin().await?;
-	let bar = ProgressBar::new(json.len() as u64);
+	let mut transaction = pool.begin().await?;
+
+	let style = ProgressStyle::with_template(
+		"[{elapsed_precise}] [{bar:40.white/blue}] {human_pos}/{human_len} {msg}",
+	)
+	.expect("failed to create progress bar style")
+	.progress_chars("=>-");
+
+	let bar = ProgressBar::new(json.len() as u64).with_style(style);
+	bar.set_message("Inserting rows to countries table...");
 
 	for netblock in json.into_iter().progress_with(bar) {
 		if let Ok(cidr) = IpNet::from_str(&netblock.network) {
-			let result = sqlx::query("INSERT INTO countries VALUES ($1, $2, $3, $4, $5)")
-				.bind(cidr)
-				.bind(netblock.country)
-				.bind(netblock.country_code)
-				.bind(netblock.asn)
-				.bind(netblock.company)
-				.execute(&mut *tx)
-				.await;
+			let result = sqlx::query(
+				"INSERT INTO countries VALUES ($1, $2, $3, $4, $5) 
+					ON CONFLICT (network, country, country_code) DO UPDATE 
+					network = EXCLUDED.network,
+					country = EXCLUDED.country,
+					country_code = EXCLUDED.country_code,
+					asn = EXCLUDED.asn,
+					company = EXCLUDED.company",
+			)
+			.bind(cidr)
+			.bind(netblock.country)
+			.bind(netblock.country_code)
+			.bind(netblock.asn)
+			.bind(netblock.company)
+			.execute(&mut *transaction)
+			.await;
 
 			if let Err(e) = result {
 				debug!("Error while updating row in countries table {e}");
@@ -164,8 +170,8 @@ pub async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {
 		};
 	}
 
-	info!("Commiting results to database");
-	tx.commit().await?;
+	transaction.commit().await?;
 
+	info!("All done!");
 	Ok(())
 }

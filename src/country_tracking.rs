@@ -27,7 +27,6 @@ struct CountryRow {
 pub async fn country_tracking(pool: PgPool, config: Config) -> anyhow::Result<()> {
 	loop {
 		download_database(&config).await?;
-		create_tables(&pool).await;
 		insert_json_to_table(&pool).await?;
 
 		// Sleep
@@ -123,7 +122,8 @@ async fn parse_json_to_vec(string: String) -> serde_json::Result<Vec<CountryRow>
 	))
 }
 
-async fn create_tables(pool: &PgPool) {
+pub async fn create_tables(pool: &PgPool) -> Result<(), sqlx::Error> {
+	// Create table
 	sqlx::query(
 		"CREATE TABLE IF NOT EXISTS countries (
     		network CIDR,
@@ -135,8 +135,17 @@ async fn create_tables(pool: &PgPool) {
     	)",
 	)
 	.execute(pool)
-	.await
-	.unwrap();
+	.await?;
+
+	// Use a GIST inet_ops index for the network column
+	// This allows for really fast lookup times from my testing
+	//
+	// Countries table needs to exist before we can create an index on it
+	sqlx::query("CREATE INDEX IF NOT EXISTS countries_table_index ON countries USING GIST (network inet_ops);")
+		.execute(pool)
+		.await?;
+
+	Ok(())
 }
 
 async fn insert_json_to_table(pool: &PgPool) -> anyhow::Result<()> {

@@ -74,7 +74,7 @@ pub async fn update_server(server: Server, conn: Arc<Pool<Postgres>>) -> anyhow:
 		return Err(RunError::ServerOptOut)?;
 	}
 
-	let address_information = get_address_info(&address, &conn).await?;
+	let address_information = get_address_info(&address, &conn).await.unwrap();
 
 	sqlx::query(
 		"INSERT INTO servers (

@@ -1,20 +1,19 @@
 use crate::config::Config;
-use crate::database;
-use crate::protocol::MinecraftServer;
+use crate::database::Database;
+use crate::protocol::PingableServer;
 use crate::response::Server;
-use crate::utils::RunError;
 use futures_util::StreamExt;
-use sqlx::types::ipnet::IpNet;
+use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
-pub static PERMITS: Semaphore = Semaphore::const_new(10000);
+pub static PERMITS: Semaphore = Semaphore::const_new(1000);
 pub const TIMEOUT_SECS: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Default)]
@@ -44,9 +43,9 @@ impl ScanBuilder {
 		Scanner {
 			config: self.config,
 			mode: self.mode,
-			pool: {
+			database: {
 				match self.pool {
-					Some(pool) => Arc::new(pool),
+					Some(pool) => Database::new(pool),
 					None => {
 						error!("Failed to connect to database!");
 						std::process::exit(1);
@@ -68,7 +67,7 @@ pub enum Mode {
 pub struct Scanner {
 	pub config: Config,
 	pub mode: Mode,
-	pub pool: Arc<Pool<Postgres>>,
+	pub database: Database,
 }
 
 impl Scanner {
@@ -92,31 +91,81 @@ impl Scanner {
 	/// Rescan servers already found in the database
 	async fn rescan(&self) {
 		loop {
-			let mut servers = database::fetch_servers(&self.pool).await;
-
 			let start_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(n) => n.as_secs(),
-				Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+				Err(_) => panic!("system time before unix epoch!"),
 			};
 
-			let mut handles = Vec::new();
+			let ports = self.config.scanner.port_range_start..=self.config.scanner.port_range_end;
+			let (tx, mut rx) = tokio::sync::mpsc::channel::<(Ipv4Addr, u16)>(100);
 
-			// Iterate over results from Postgres as they become available
-			while let Some(Ok(row)) = servers.next().await {
-				let address = row.get::<IpNet, _>("address").addr().to_string();
-				let port = row.get::<i32, _>("port") as u16;
+			let total_servers = self
+				.database
+				.count_servers()
+				.await
+				.expect("failed to count servers!");
 
-				// Wait to acquire permit before spawning a new task
-				let permit = PERMITS.acquire().await;
-				handles.push(task_wrapper(address, port, self.pool.clone()));
+			debug!("Found {total_servers} servers");
+
+			let mut stream = sqlx::query(
+				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen ASC",
+			)
+			.fetch(&self.database.0);
+
+			// Spawn a task to produce values and send them down the transmitter
+			tokio::spawn(async move {
+				// Streams results from database. This works great for performance
+				while let Some(Ok(row)) = stream.next().await {
+					let address = Ipv4Addr::from_bits(row.get::<i64, _>("address") as u32);
+
+					// Run for each port specified in config
+					for port in ports.clone() {
+						if let Err(e) = tx.send((address, port)).await {
+							debug!("channel has been closed! {e}")
+						}
+					}
+				}
+			});
+
+			let style = ProgressStyle::with_template(
+				"[{elapsed_precise}] [{bar:40.white/blue}] {human_pos}/{human_len} {msg}",
+			)
+			.expect("failed to create progress bar style")
+			.progress_chars("=>-");
+
+			let bar =
+				ProgressBar::new((total_servers as u64) * self.config.scanner.total_ports() as u64)
+					.with_style(style);
+
+			// Consume values from the receiver
+			while let Some((addr, port)) = rx.recv().await {
+				let permit = PERMITS.acquire().await.unwrap();
+
+				let pool = self.database.clone();
+				let bar = bar.clone();
+
+				tokio::spawn(async move {
+					// Move permit to future so it blocks the task as well
+					let _permit = permit;
+
+					// In the future there will be different ping types here
+					// Such as pinging legacy servers, and bedrock servers
+					let socket = SocketAddrV4::new(addr, port);
+
+					task_wrapper(socket, pool).await;
+					bar.inc(1);
+				});
 			}
 
-			futures_util::future::join_all(handles).await;
+			bar.finish_and_clear();
 
 			let end_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(d) => d.as_secs(),
-				Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+				Err(_) => panic!("system time before unix epoch!"),
 			};
+
+			info!("Sleeping for 10 seconds to wait for all tasks to complete");
+			tokio::time::sleep(Duration::from_secs(10)).await;
 
 			info!("Scan completed in {} seconds", end_time - start_time);
 
@@ -179,8 +228,15 @@ impl Scanner {
 					None => continue,
 				};
 
+				let pool = self.database.clone();
+
 				// Spawn a pinging task for each server found
-				task_wrapper(address, port, self.pool.clone());
+				tokio::spawn(async move {
+					// In the future there will be different ping types here
+					// Such as pinging legacy servers, and bedrock servers
+					let socket = SocketAddrV4::new(address.parse().unwrap(), port);
+					task_wrapper(socket, pool).await;
+				});
 			}
 
 			// Quit if only one scan is requested in config
@@ -201,33 +257,14 @@ impl Scanner {
 	}
 }
 
-fn task_wrapper(
-	address: String,
-	port: u16,
-	conn: Arc<Pool<Postgres>>,
-) -> tokio::task::JoinHandle<()> {
-	tokio::task::spawn(async move {
-		let minecraft_server = MinecraftServer::new(address, port);
+async fn task_wrapper(socket: SocketAddrV4, pool: Database) {
+	let server = PingableServer::new(socket);
 
-		async fn run(minecraft_server: MinecraftServer) -> Result<Server, RunError> {
-			// In the future there will be a config option to specify the ping type for
-			// a server, as some servers require the hostname and port to be set.
-			// Something that this program isn't doing yet.
-			let response = minecraft_server.simple_ping().await?;
-
-			// Assign address and port to the server struct
-			let mut server: Server = serde_json::from_str(&response)?;
-			server.address = minecraft_server.address;
-			server.port = minecraft_server.port;
-
-			Ok(server)
-		}
-
-		match run(minecraft_server).await {
-			Ok(server) => {
-				let _ = database::update_server(server, conn).await;
+	if let Ok(response) = server.simple_ping().await {
+		if let Ok(server) = serde_json::from_str::<Server>(&response) {
+			if let Err(e) = pool.update_server(server, socket).await {
+				debug!("Error updating server in database! {e}");
 			}
-			Err(error) => debug!("Error occurred while pinging server: {error}"),
 		}
-	})
+	}
 }

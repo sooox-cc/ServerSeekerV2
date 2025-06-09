@@ -1,6 +1,5 @@
 use crate::utils::RunError;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::str::FromStr;
+use std::net::SocketAddrV4;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::debug;
@@ -17,31 +16,21 @@ const SIMPLE_PAYLOAD: [u8; 9] = [
 ];
 
 #[derive(Debug)]
-pub struct MinecraftServer {
-	pub address: String,
-	pub port: u16,
+pub struct PingableServer {
+	pub socket: SocketAddrV4,
 }
 
-impl From<(String, u16)> for MinecraftServer {
-	fn from(value: (String, u16)) -> Self {
-		MinecraftServer::new(value.0, value.1)
-	}
-}
-
-impl MinecraftServer {
-	pub fn new(address: String, port: u16) -> Self {
-		Self { address, port }
+impl PingableServer {
+	pub fn new(socket: SocketAddrV4) -> Self {
+		Self { socket }
 	}
 
 	pub async fn simple_ping(&self) -> Result<String, RunError> {
-		let socket = SocketAddr::V4(SocketAddrV4::new(
-			Ipv4Addr::from_str(&self.address)?,
-			self.port,
-		));
-
-		let mut stream =
-			tokio::time::timeout(crate::scanner::TIMEOUT_SECS, TcpStream::connect(&socket))
-				.await??;
+		let mut stream = tokio::time::timeout(
+			crate::scanner::TIMEOUT_SECS,
+			TcpStream::connect(&self.socket),
+		)
+		.await??;
 		stream.write_all(&SIMPLE_PAYLOAD).await?;
 		let mut response = [0; 1024];
 
@@ -54,7 +43,7 @@ impl MinecraftServer {
 		let total_read_bytes = stream.read(&mut response).await?;
 
 		if total_read_bytes == 0 {
-			debug!("[{}] Total read bytes is 0", &self.address);
+			debug!("[{}] Total read bytes is 0", &self.socket.ip());
 			return Err(RunError::MalformedResponse);
 		}
 
@@ -73,7 +62,7 @@ impl MinecraftServer {
 		if string_length == 0 || string_length > 32767 {
 			debug!(
 				"[{}] String length: {string_length} was either 0 or too long",
-				&self.address
+				&self.socket.ip()
 			);
 			return Err(RunError::MalformedResponse);
 		}
@@ -88,7 +77,7 @@ impl MinecraftServer {
 
 		if total_read_bytes > string_length {
 			debug!(
-			"[{}] Total read bytes: {total_read_bytes} is larger than string length: {string_length}", &self.address
+			"[{}] Total read bytes: {total_read_bytes} is larger than string length: {string_length}", &self.socket.ip()
 		);
 			return Err(RunError::MalformedResponse);
 		}

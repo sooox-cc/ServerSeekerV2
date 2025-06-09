@@ -54,11 +54,12 @@ async fn main() {
 		.port(config.database.port)
 		.database(&config.database.table)
 		// Turn off slow statement logging, this clogs the console
-		.log_slow_statements(LevelFilter::Off, Duration::from_secs(5));
+		.log_slow_statements(LevelFilter::Off, Duration::from_secs(60));
 
 	let pool = PgPoolOptions::new()
 		// Refresh connections every 24 hours
 		.max_lifetime(Duration::from_secs(86400))
+		.acquire_slow_threshold(Duration::from_secs(60))
 		.connect_with(options)
 		.await
 		.ok();

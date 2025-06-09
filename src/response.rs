@@ -24,11 +24,6 @@ pub enum ServerType {
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Server {
-	// Contain a servers IP and port in the struct
-	#[serde(default)]
-	pub address: String,
-	#[serde(default)]
-	pub port: u16,
 	pub version: Version,
 	pub favicon: Option<String>,
 	pub players: Players,

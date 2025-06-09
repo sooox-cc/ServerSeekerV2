@@ -29,6 +29,14 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features.
 ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
 
+[Discord Server](https://discord.gg/UA5kyprunc)
+
+[Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz)
+
+(The two are bridged together so you only need to join one)
+
+### Please don't join these asking for support, I intentionally don't provide support setting up these projects
+
 ## Features
 
 - Rescanning. SSV2 Can rescan already found servers for the most up-to-date results (updates every few minutes)
@@ -40,8 +48,7 @@ ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory sa
 - Automatic opting out. Unlike the original ServerSeeker where you had to join a discord server and request your server
   be removed. You can automatically remove yourself from the database and prevent further scans by modifying your
   servers MOTD.
-- Player and mod tracking. Find servers that have specific players online or servers running specific forge mods.
-- (or both at the same time!)
+- Player and mod tracking. Find servers that have specific players online or servers running specific forge mods. (or both at the same time!)
 - Self Hostable. Host your own scanning instance and find your own servers! (See below for warnings against running this
   on a residential network)
 
@@ -81,6 +88,12 @@ my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@
   bot and server terminated within a month of the sale. At the time I was looking for a project to sink my
   endless amounts of free time into, so shortly after the sale, I started developing this :)
 
+- Q: Why don't you provide support for setting this up?
+- A: To raise the barrier of entry for server scanning. People have often come to me asking how they can use these
+  tools for griefing servers or harassing innocent people. I enjoy FOSS software and wish to keep all my software fully open source
+  forever but if people want to use my software to harm others then I'm going to intentionally make it harder to use such that only people
+  who actually know what they are doing can use this.
+
 ## Related projects
 
 - [Discord Bot](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-Discord-Bot)
@@ -92,30 +105,6 @@ my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@
 - [tokio](https://crates.io/crates/tokio)
 - [sqlx](https://crates.io/crates/sqlx)
 - [serde](https://crates.io/crates/serde)
-
-### Installation
-
-**Warning: You definitely should not run this at home or from a residental network, that is a very easy way to make your
-Internet Service Provider very angry at you and potentially terminate your contract**
-
-Download the executable from the Releases tab. (Soon)
-
-## Usage
-
-1. Copy
-   the [example config file](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/src/branch/main/config-example.toml)
-   and fill out the information
-2. Set the right permissions
-   ```sh
-   chmod +x ./ServerSeekerV2
-   ```
-3. Run the scanner
-   ```sh
-   ./ServerSeekerV2 --mode <mode>
-   ```
-4. There are two modes to choose from, **rescanner** and **discovery**. Discovery uses masscan to find new servers while
-   rescanner rescans the database. For discovery mode it is required that your masscan config looks like the provided
-   example. SSV2 reads lines from masscan's standard output to scan servers as they are found.
 
 ## Contributing
 

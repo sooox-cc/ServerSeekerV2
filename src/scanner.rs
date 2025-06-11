@@ -97,15 +97,7 @@ impl Scanner {
 			};
 
 			let ports = self.config.scanner.port_range_start..=self.config.scanner.port_range_end;
-			let (tx, mut rx) = tokio::sync::mpsc::channel::<(Ipv4Addr, u16)>(100);
-
-			let total_servers = self
-				.database
-				.count_servers()
-				.await
-				.expect("failed to count servers!");
-
-			debug!("Found {total_servers} servers");
+			let (tx, mut rx) = tokio::sync::mpsc::channel::<SocketAddrV4>(10);
 
 			let mut stream = sqlx::query(
 				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen ASC",
@@ -116,16 +108,26 @@ impl Scanner {
 			tokio::spawn(async move {
 				// Streams results from database. This works great for performance
 				while let Some(Ok(row)) = stream.next().await {
-					let address = Ipv4Addr::from_bits(row.get::<i64, _>("address") as u32);
+					let address = match row.try_get::<i64, _>("address") {
+						Ok(a) => Ipv4Addr::from_bits(a as u32),
+						Err(_) => continue,
+					};
 
 					// Run for each port specified in config
 					for port in ports.clone() {
-						if let Err(e) = tx.send((address, port)).await {
-							debug!("channel has been closed! {e}")
+						match tx.send(SocketAddrV4::new(address, port)).await {
+							Ok(_) => {}
+							Err(e) => debug!("send channel has been closed! {e}"),
 						}
 					}
 				}
 			});
+
+			let total_servers = self
+				.database
+				.count_servers()
+				.await
+				.expect("failed to count servers!");
 
 			let style = ProgressStyle::with_template(
 				"[{elapsed_precise}] [{bar:40.white/blue}] {human_pos}/{human_len} {msg}",
@@ -138,8 +140,8 @@ impl Scanner {
 					.with_style(style);
 
 			// Consume values from the receiver
-			while let Some((addr, port)) = rx.recv().await {
-				let permit = PERMITS.acquire().await.unwrap();
+			while let Some(socket) = rx.recv().await {
+				let permit = PERMITS.acquire().await;
 
 				let pool = self.database.clone();
 				let bar = bar.clone();
@@ -148,24 +150,19 @@ impl Scanner {
 					// Move permit to future so it blocks the task as well
 					let _permit = permit;
 
-					// In the future there will be different ping types here
-					// Such as pinging legacy servers, and bedrock servers
-					let socket = SocketAddrV4::new(addr, port);
-
 					task_wrapper(socket, pool).await;
 					bar.inc(1);
 				});
 			}
 
+			// Sleep for 10 seconds to ensure that all tasks finish
+			tokio::time::sleep(Duration::from_secs(10)).await;
 			bar.finish_and_clear();
 
 			let end_time = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
 				Ok(d) => d.as_secs(),
 				Err(_) => panic!("system time before unix epoch!"),
 			};
-
-			info!("Sleeping for 10 seconds to wait for all tasks to complete");
-			tokio::time::sleep(Duration::from_secs(10)).await;
 
 			info!("Scan completed in {} seconds", end_time - start_time);
 

@@ -7,6 +7,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::{Pool, Postgres, Row};
 use std::fmt::Debug;
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -100,13 +101,13 @@ impl Scanner {
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<SocketAddrV4>(10);
 
 			let mut stream = sqlx::query(
-				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen DESC LIMIT 1000",
+				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen ASC",
 			)
 			.fetch(&self.database.0);
 
 			// Spawn a task to produce values and send them down the transmitter
 			tokio::spawn(async move {
-				// Streams results from database. This works great for performance
+				// Streams results from database. This works great for memory usage
 				while let Some(Ok(row)) = stream.next().await {
 					let address = match row.try_get::<i64, _>("address") {
 						Ok(a) => Ipv4Addr::from_bits(a as u32),
@@ -114,6 +115,9 @@ impl Scanner {
 					};
 
 					// Run for each port specified in config
+					//
+					// NOTE: clone is needed because RangeInclusive<T> doesn't implement copy
+					// This should be optimized away anyway
 					for port in ports.clone() {
 						match tx.send(SocketAddrV4::new(address, port)).await {
 							Ok(_) => {}
@@ -135,7 +139,9 @@ impl Scanner {
 			.expect("failed to create progress bar style")
 			.progress_chars("=>-");
 
-			let bar = ProgressBar::new(1000).with_style(style);
+			let bar =
+				ProgressBar::new((total_servers * self.config.scanner.total_ports() as i64) as u64)
+					.with_style(style);
 
 			// Consume values from the receiver
 			while let Some(socket) = rx.recv().await {
@@ -219,7 +225,7 @@ impl Scanner {
 
 				// .nth() consumes all preceding elements so address will be the 2nd
 				let address = match line.nth(1) {
-					Some(address) => address.to_owned(),
+					Some(address) => Ipv4Addr::from_str(address).unwrap(),
 					None => continue,
 				};
 
@@ -227,9 +233,8 @@ impl Scanner {
 
 				// Spawn a pinging task for each server found
 				tokio::spawn(async move {
-					// In the future there will be different ping types here
-					// Such as pinging legacy servers, and bedrock servers
-					let socket = SocketAddrV4::new(address.parse().unwrap(), port);
+					let socket = SocketAddrV4::new(address, port);
+
 					task_wrapper(socket, pool).await;
 				});
 			}

@@ -55,11 +55,11 @@ pub enum MinecraftColorCodes {
 	UnknownValue,
 }
 
-impl From<String> for MinecraftColorCodes {
-	fn from(s: String) -> Self {
+impl From<&str> for MinecraftColorCodes {
+	fn from(s: &str) -> Self {
 		use MinecraftColorCodes::*;
 
-		match s.as_str() {
+		match s {
 			"black" => Black,
 			"dark_blue" => DarkBlue,
 			"dark_green" => DarkGreen,

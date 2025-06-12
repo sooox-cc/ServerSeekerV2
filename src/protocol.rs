@@ -31,6 +31,7 @@ impl PingableServer {
 			TcpStream::connect(&self.socket),
 		)
 		.await??;
+
 		stream.write_all(&SIMPLE_PAYLOAD).await?;
 		let mut response = [0; 1024];
 
@@ -90,14 +91,14 @@ impl PingableServer {
 			.read_to_end(&mut output)
 			.await?;
 
-		Ok(String::from_utf8_lossy(&output).to_string())
+		Ok(String::from_utf8_lossy_owned(output))
 	}
 
 	// TODO
-	pub async fn legacy_ping() {}
+	// pub async fn legacy_ping() {}
 
 	// TODO
-	pub async fn proper_ping() {}
+	// pub async fn proper_ping() {}
 }
 
 // returns the decoded varint and how many bytes were read

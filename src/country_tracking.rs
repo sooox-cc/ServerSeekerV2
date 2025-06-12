@@ -100,6 +100,7 @@ async fn download_database(config: &Config) -> anyhow::Result<()> {
 	}
 }
 
+// JSON from ipinfo is not valid JSON, we need to parse it into valid JSON manually
 async fn parse_json_to_vec(string: String) -> serde_json::Result<Vec<CountryRow>> {
 	serde_json::from_str(&format!(
 		"[{}]",

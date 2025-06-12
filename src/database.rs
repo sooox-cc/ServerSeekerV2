@@ -9,7 +9,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 struct AddressInfo {
-	country: String,
 	country_code: String,
 	asn: String,
 }
@@ -17,7 +16,6 @@ struct AddressInfo {
 impl FromRow<'_, PgRow> for AddressInfo {
 	fn from_row(row: &PgRow) -> Result<Self, sqlx::Error> {
 		Ok(Self {
-			country: row.try_get("country")?,
 			country_code: row.try_get("country_code")?,
 			asn: row.try_get("asn")?,
 		})
@@ -50,8 +48,8 @@ impl Database {
 			.await
 	}
 
-	async fn get_address_info(&self, address: &IpNet) -> Result<AddressInfo, sqlx::Error> {
-		sqlx::query_as("SELECT country, country_code, asn FROM countries WHERE $1 <<= network")
+	async fn get_country_info(&self, address: &IpNet) -> Result<AddressInfo, sqlx::Error> {
+		sqlx::query_as("SELECT country_code, asn FROM countries WHERE $1 <<= network")
 			.bind(address)
 			.fetch_one(&self.0)
 			.await
@@ -76,7 +74,7 @@ impl Database {
 			return Err(RunError::ServerOptOut)?;
 		}
 
-		let address_information = self.get_address_info(&address).await?;
+		let address_information = self.get_country_info(&address).await?;
 
 		sqlx::query(
 			"INSERT INTO servers (

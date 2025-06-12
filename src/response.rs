@@ -76,9 +76,9 @@ pub struct ForgeData {
 #[allow(dead_code)]
 #[derive(Deserialize, Serialize, PartialEq, Clone, Debug)]
 pub struct Mod {
-	#[serde(alias = "modId", alias = "modid")]
+	#[serde(rename = "modId", alias = "modid")]
 	pub id: String,
-	#[serde(alias = "modmarker", alias = "version")]
+	#[serde(rename = "modmarker", alias = "version")]
 	pub version: String,
 }
 
@@ -107,6 +107,14 @@ impl Server {
 			Some("Waterfall") => ServerType::Waterfall,
 			Some("Bungeecord") => ServerType::Bungeecord,
 			_ => ServerType::Java,
+		}
+	}
+
+	// Has the user opted out of scanning?
+	pub fn check_opt_out(&self) -> bool {
+		match &self.description_formatted {
+			Some(description) => String::from(description).contains("§b§d§f§d§b"),
+			None => false,
 		}
 	}
 
@@ -151,7 +159,7 @@ impl Server {
 						},
 						"color" => {
 							if let Some(c) = value.as_str() {
-								let color = MinecraftColorCodes::from(c.to_string());
+								let color = MinecraftColorCodes::from(c);
 								output.push_str(format!("§{}", color.get_code()).as_str())
 							}
 						},
@@ -180,13 +188,5 @@ impl Server {
 		}
 
 		output
-	}
-
-	// Has the user opted out of scanning?
-	pub fn check_opt_out(&self) -> bool {
-		match &self.description_formatted {
-			Some(description) => String::from(description).contains("§b§d§f§d§b"),
-			None => false,
-		}
 	}
 }

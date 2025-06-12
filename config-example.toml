@@ -8,12 +8,6 @@ port_range_start = 25565
 # End of port range
 port_range_end = 25565
 
-[player_tracking]
-# Enable player tracking?
-enabled = false
-# List of players to track
-players = [""]
-
 [masscan]
 # Location of masscans config file
 config_file = "masscan.conf"
@@ -29,3 +23,17 @@ table = "postgres"
 user = "postgres"
 # Database user password
 password = "SuperSuperSecretPassword"
+
+[player_tracking]
+# Enable player tracking?
+enabled = false
+# List of players to track
+players = [""]
+
+[country_tracking]
+# Enable tracking of country information (requires a valid https://ipinfo.io account token)
+enabled = false
+# How often to update the country information table in hours (minimum 24 hours)
+update_frequency = 48
+# IPInfo token
+ipinfo_token = ":3"

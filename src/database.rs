@@ -1,11 +1,28 @@
 use crate::response::Server;
 use crate::utils::RunError;
-use sqlx::postgres::PgQueryResult;
+use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::{IpNet, Ipv4Net};
 use sqlx::types::Uuid;
-use sqlx::{PgPool, Row};
+use sqlx::{FromRow, PgPool, Row};
 use std::net::SocketAddrV4;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Debug)]
+struct AddressInfo {
+	country: String,
+	country_code: String,
+	asn: String,
+}
+
+impl FromRow<'_, PgRow> for AddressInfo {
+	fn from_row(row: &PgRow) -> Result<Self, sqlx::Error> {
+		Ok(Self {
+			country: row.try_get("country")?,
+			country_code: row.try_get("country_code")?,
+			asn: row.try_get("asn")?,
+		})
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Database(pub PgPool);
@@ -26,10 +43,17 @@ impl Database {
 	}
 
 	/// Deletes a server from the database
-	pub async fn delete_server(&self, address: IpNet) -> Result<PgQueryResult, sqlx::Error> {
+	async fn delete_server(&self, address: IpNet) -> Result<PgQueryResult, sqlx::Error> {
 		sqlx::query("DELETE FROM servers WHERE address = $1")
 			.bind(address)
 			.execute(&self.0)
+			.await
+	}
+
+	async fn get_address_info(&self, address: &IpNet) -> Result<AddressInfo, sqlx::Error> {
+		sqlx::query_as("SELECT country, country_code, asn FROM countries WHERE $1 <<= network")
+			.bind(address)
+			.fetch_one(&self.0)
 			.await
 	}
 
@@ -52,6 +76,8 @@ impl Database {
 			return Err(RunError::ServerOptOut)?;
 		}
 
+		let address_information = self.get_address_info(&address).await?;
+
 		sqlx::query(
 			"INSERT INTO servers (
 		address,
@@ -67,7 +93,9 @@ impl Database {
 		first_seen,
 		last_seen,
 		online_players,
-		max_players) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		max_players,
+        country,
+    	asn) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     	ON CONFLICT (address, port) DO UPDATE SET
     	software = EXCLUDED.software,
     	version = EXCLUDED.version,
@@ -79,7 +107,9 @@ impl Database {
     	enforces_secure_chat = EXCLUDED.enforces_secure_chat,
     	last_seen = EXCLUDED.last_seen,
     	online_players = EXCLUDED.online_players,
-    	max_players = EXCLUDED.max_players",
+    	max_players = EXCLUDED.max_players,
+    	country = EXCLUDED.country,
+    	asn = EXCLUDED.asn",
 		)
 		.bind(address)
 		.bind(socket.port() as i32)
@@ -99,6 +129,8 @@ impl Database {
 		.bind(timestamp)
 		.bind(server.players.online)
 		.bind(server.players.max)
+		.bind(address_information.country_code)
+		.bind(address_information.asn)
 		.execute(&self.0)
 		.await?;
 

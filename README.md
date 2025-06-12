@@ -51,6 +51,7 @@ ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory sa
 - Player and mod tracking. Find servers that have specific players online or servers running specific forge mods. (or both at the same time!)
 - Self Hostable. Host your own scanning instance and find your own servers! (See below for warnings against running this
   on a residential network)
+- Country tracking. If enabled, tracks which country and Autonomous System a server is from.
 
 # For people just looking to not be scanned anymore
 

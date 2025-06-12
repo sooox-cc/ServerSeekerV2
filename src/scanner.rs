@@ -100,7 +100,7 @@ impl Scanner {
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<SocketAddrV4>(10);
 
 			let mut stream = sqlx::query(
-				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen ASC",
+				"SELECT (address - '0.0.0.0'::inet) AS address FROM servers ORDER BY last_seen DESC LIMIT 1000",
 			)
 			.fetch(&self.database.0);
 
@@ -135,9 +135,7 @@ impl Scanner {
 			.expect("failed to create progress bar style")
 			.progress_chars("=>-");
 
-			let bar =
-				ProgressBar::new((total_servers as u64) * self.config.scanner.total_ports() as u64)
-					.with_style(style);
+			let bar = ProgressBar::new(1000).with_style(style);
 
 			// Consume values from the receiver
 			while let Some(socket) = rx.recv().await {

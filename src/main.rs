@@ -1,6 +1,7 @@
 #![feature(let_chains)]
 
 mod config;
+mod country_tracking;
 mod database;
 mod protocol;
 mod response;
@@ -15,7 +16,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::ConnectOptions;
 use std::time::Duration;
 use tracing::log::LevelFilter;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[derive(Parser, Debug)]
 #[clap(about = "Scans the internet for minecraft servers and indexes them")]
@@ -63,6 +64,28 @@ async fn main() {
 		.connect_with(options)
 		.await
 		.ok();
+
+	if pool.is_none() {
+		error!("Failed to connect to database");
+		std::process::exit(1);
+	}
+
+	// Spawn a task to update the country info database everyday
+	if let Some(pool) = &pool
+		&& config.country_tracking.enabled
+	{
+		if country_tracking::create_tables(pool).await.is_err() {
+			error!("failed to create tables");
+			std::process::exit(1);
+		}
+
+		debug!("Spawning country tracking task");
+
+		tokio::task::spawn(country_tracking::country_tracking(
+			pool.clone(),
+			config.clone(),
+		));
+	}
 
 	Scanner::new()
 		.config(config)

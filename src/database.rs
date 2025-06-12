@@ -44,7 +44,7 @@ impl Database {
 		let formatted = server
 			.description_raw
 			.as_ref()
-			.and_then(|v| Some(server.build_formatted_description(v)));
+			.map(|v| server.build_formatted_description(v));
 
 		// Delete server if it's opted out
 		if server.check_opt_out() {

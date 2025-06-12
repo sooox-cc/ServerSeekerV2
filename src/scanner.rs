@@ -254,6 +254,7 @@ impl Scanner {
 	}
 }
 
+#[inline(always)]
 async fn task_wrapper(socket: SocketAddrV4, pool: Database) {
 	let server = PingableServer::new(socket);
 

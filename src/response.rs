@@ -152,7 +152,7 @@ impl Server {
 						"color" => {
 							if let Some(c) = value.as_str() {
 								let color = MinecraftColorCodes::from(c.to_string());
-								output.push_str(format!("§{}", color.get_code().to_string()).as_str())
+								output.push_str(format!("§{}", color.get_code()).as_str())
 							}
 						},
 						_ => (),

@@ -101,6 +101,7 @@ impl PingableServer {
 }
 
 // returns the decoded varint and how many bytes were read
+#[inline(always)]
 fn decode_varint(bytes: &[u8]) -> (usize, u8) {
 	let mut value: usize = 0;
 	let mut count: u8 = 0;

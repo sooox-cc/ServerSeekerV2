@@ -18,11 +18,11 @@ pub enum RunError {
 	DatabaseError(#[from] sqlx::Error),
 }
 
-impl Into<usize> for RunError {
-	fn into(self) -> usize {
+impl From<RunError> for usize {
+	fn from(value: RunError) -> Self {
 		use RunError::*;
 
-		match self {
+		match value {
 			AddressParseError(_) => 0,
 			IOError(_) => 1,
 			MalformedResponse => 2,

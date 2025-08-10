@@ -4,6 +4,7 @@
 mod config;
 mod country_tracking;
 mod database;
+mod geo_lookup;
 mod protocol;
 mod response;
 mod scanner;

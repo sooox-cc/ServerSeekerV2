@@ -4,16 +4,28 @@
 
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners#about-code-owners
 
-# https://code.forgejo.org/forgejo/forgejo/src/tag/v10.0.1/CODEOWNERS
+# Fork Information:
+# Original Repository: https://github.com/Funtimes909/ServerSeekerV2
+# This Fork: https://github.com/sooox-cc/ServerSeekerV2
 
+# Global Owner (Fork Maintainer)
+* @sooox-cc
 
-# Global Owner
-* @Funtimes909
+# Core Scanner Code (Original)
+src/main.rs @Funtimes909
+src/scanner.rs @Funtimes909
+src/database.rs @Funtimes909
 
-# Documentation Owner
-LICENSE @Nucceteere
-README @Nucceteere
-*.rst @Nucceteere
-*.md @Nucceteere
-*.txt @Nucceteere
-docs/ @Nucceteere
+# New Features (Fork Additions)
+src/geo_lookup.rs @sooox-cc
+webapp/ @sooox-cc
+start_webapp.sh @sooox-cc
+
+# Documentation
+LICENSE @Funtimes909
+README.md Nucceteere
+README_WEBAPP.md @sooox-cc
+SCAN_GUIDE.md @sooox-cc
+*.md @sooox-cc
+*.txt @sooox-cc
+docs/ @sooox-cc

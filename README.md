@@ -1,8 +1,8 @@
-[![Forgejo](https://img.shields.io/badge/forgejo-%23F2712B.svg?style=for-the-badge&logo=forgejo&logoColor=white)](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
+[![GitHub](https://img.shields.io/badge/GitHub-%23181717.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sooox-cc/ServerSeekerV2)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-%234169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Rust](https://img.shields.io/badge/Rust-red?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
-[![Forgejo Last Commit](https://img.shields.io/gitea/last-commit/ServerSeekerV2/ServerSeekerV2?gitea_url=https%3A%2F%2Fgit.funtimes909.xyz%2F&style=for-the-badge&logo=forgejo)](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2)
-[![AUR Maintainer](https://img.shields.io/aur/maintainer/serverseekerv2-git?style=for-the-badge&logo=archlinux&label=aur%20maintainer)](https://aur.archlinux.org/packages/serverseekerv2-git)
+[![Axum](https://img.shields.io/badge/Axum-web%20framework-orange?style=for-the-badge)](https://github.com/tokio-rs/axum)
+[![Original Repo](https://img.shields.io/badge/upstream-Funtimes909-blue?style=for-the-badge)](https://github.com/Funtimes909/ServerSeekerV2)
 <br/>
 <div align="center">
 <a href="https://github.com/ShaanCoding/ReadME-Generator">
@@ -13,12 +13,12 @@
 Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 <br/>
 <br/>
-<a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/wiki"><strong>Explore the docs »</strong></a>
+<a href="https://github.com/sooox-cc/ServerSeekerV2/blob/main/SCAN_GUIDE.md"><strong>Explore the docs »</strong></a>
 <br/>
 <br/>
 
-<a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Report Bug</a> -
-<a href="https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2/issues/new">Request Feature</a>
+<a href="https://github.com/sooox-cc/ServerSeekerV2/issues/new">Report Bug</a> -
+<a href="https://github.com/sooox-cc/ServerSeekerV2/issues/new">Request Feature</a>
 </p>
 </div>
 
@@ -29,29 +29,56 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and better with more features.
 ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
 
-[Discord Server](https://discord.gg/UA5kyprunc)
+**This is a fork of the original ServerSeekerV2 with additional features:**
+- 🌐 **Web Dashboard**: Complete web interface for managing discovered servers
+- 🔍 **Range Scanner**: Targeted subnet scanning for more efficient discovery
+- 🗺️ **Geo Updates**: Geolocation data updates for servers
+- 📊 **Enhanced Analytics**: Better statistics and server tracking
 
-[Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz)
+**Original Project:** [Funtimes909/ServerSeekerV2](https://github.com/Funtimes909/ServerSeekerV2)
 
-(The two are bridged together so you only need to join one)
-
-### Please don't join these asking for support, I intentionally don't provide support setting up these projects
+[Discord Server](https://discord.gg/UA5kyprunc) | [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz)
 
 ## Features
 
-- Rescanning. SSV2 Can rescan already found servers for the most up-to-date results (updates every few minutes)
-- Performance. SSV2 is significantly faster than the original ServerSeeker.
-- Open Source. Unlike the original, SSV2 and all it's related projects are fully open source.
-- Advanced MOTD Parsing. Weather a servers description is really complex and has lots of formatting or a simple string,
-  it will be built into a string with Minecraft style text formatting codes applied in place. both raw descriptions and
-  formatted descriptions are saved in the database.
-- Automatic opting out. Unlike the original ServerSeeker where you had to join a discord server and request your server
-  be removed. You can automatically remove yourself from the database and prevent further scans by modifying your
-  servers MOTD.
-- Player and mod tracking. Find servers that have specific players online or servers running specific forge mods. (or both at the same time!)
-- Self Hostable. Host your own scanning instance and find your own servers! (See below for warnings against running this
-  on a residential network)
-- Country tracking. If enabled, tracks which country and Autonomous System a server is from.
+### Core Features (from original)
+- **Rescanning**: SSV2 Can rescan already found servers for the most up-to-date results (updates every few minutes)
+- **Performance**: SSV2 is significantly faster than the original ServerSeeker
+- **Open Source**: Unlike the original, SSV2 and all its related projects are fully open source
+- **Advanced MOTD Parsing**: Whether a servers description is really complex and has lots of formatting or a simple string, it will be built into a string with Minecraft style text formatting codes applied in place
+- **Automatic opting out**: Unlike the original ServerSeeker where you had to join a discord server and request your server be removed. You can automatically remove yourself from the database and prevent further scans by modifying your servers MOTD
+- **Player and mod tracking**: Find servers that have specific players online or servers running specific forge mods (or both at the same time!)
+- **Self Hostable**: Host your own scanning instance and find your own servers!
+- **Country tracking**: If enabled, tracks which country and Autonomous System a server is from
+
+### New Features (this fork)
+- **🌐 Web Dashboard**: Complete web interface built with Axum and Alpine.js for managing discovered servers
+- **🔍 Range Scanner**: Targeted subnet scanning mode (`--mode range-scanner`) for more efficient discovery
+- **🗺️ Geo Updates**: Geographic location updates (`--mode geo-update`) for existing servers
+- **📊 Server Management**: Mark servers as visited, add notes and ratings, filter by status
+- **🎯 Advanced Filtering**: Filter servers by software, player count, country, and visit status
+- **📱 Modern UI**: Responsive design with real-time statistics and intuitive server management
+
+## Available Modes
+
+ServerSeekerV2 now supports four scanning modes:
+
+- **`--mode discovery`**: Original mass internet scanning using masscan
+- **`--mode range-scanner`**: Scans subnets of already discovered servers (NEW)
+- **`--mode rescanner`**: Rescans all servers in database for updates
+- **`--mode geo-update`**: Updates geolocation data for existing servers (NEW)
+
+## Web Dashboard
+
+This fork includes a complete web application for managing your server discoveries:
+
+```bash
+# Start the web dashboard
+./start_webapp.sh
+# Access at http://127.0.0.1:3000
+```
+
+See [README_WEBAPP.md](README_WEBAPP.md) for detailed web dashboard documentation.
 
 # For people just looking to not be scanned anymore
 
@@ -97,15 +124,28 @@ my [Matrix Space](https://matrix.to/#/#projects:funtimes909.xyz) and message ``@
 
 ## Related projects
 
+### Original Projects
 - [Discord Bot](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-Discord-Bot)
 - [API](https://git.funtimes909.xyz/ServerSeekerV2/ServerSeekerV2-API)
 
+### This Fork
+- **Web Dashboard**: Built-in web application (see [README_WEBAPP.md](README_WEBAPP.md))
+- **Enhanced Scanning**: Multiple scanning modes for different use cases
+- **Server Management**: Complete tracking and organization system
+
 ### Built With
 
-- [rust](https://www.rust-lang.org/)
-- [tokio](https://crates.io/crates/tokio)
-- [sqlx](https://crates.io/crates/sqlx)
-- [serde](https://crates.io/crates/serde)
+#### Core Technologies
+- [Rust](https://www.rust-lang.org/) - Systems programming language
+- [Tokio](https://crates.io/crates/tokio) - Async runtime
+- [SQLx](https://crates.io/crates/sqlx) - Database toolkit
+- [Serde](https://crates.io/crates/serde) - Serialization framework
+
+#### Web Dashboard (New)
+- [Axum](https://github.com/tokio-rs/axum) - Web framework
+- [Alpine.js](https://alpinejs.dev/) - Frontend reactivity
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [PostgreSQL](https://www.postgresql.org/) - Database
 
 ## Contributing
 

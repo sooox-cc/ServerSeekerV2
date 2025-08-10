@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ServerSeekerV2 Web Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <style>
+        /* Minecraft Color Codes */
+        .mc-black { color: #000000; }
+        .mc-dark-blue { color: #0000AA; }
+        .mc-dark-green { color: #00AA00; }
+        .mc-dark-aqua { color: #00AAAA; }
+        .mc-dark-red { color: #AA0000; }
+        .mc-dark-purple { color: #AA00AA; }
+        .mc-gold { color: #FFAA00; }
+        .mc-gray { color: #AAAAAA; }
+        .mc-dark-gray { color: #555555; }
+        .mc-blue { color: #5555FF; }
+        .mc-green { color: #55FF55; }
+        .mc-aqua { color: #55FFFF; }
+        .mc-red { color: #FF5555; }
+        .mc-light-purple { color: #FF55FF; }
+        .mc-yellow { color: #FFFF55; }
+        .mc-white { color: #FFFFFF; }
+        .mc-obfuscated { animation: obfuscated 0.5s infinite; }
+        .mc-bold { font-weight: bold; }
+        .mc-strikethrough { text-decoration: line-through; }
+        .mc-underline { text-decoration: underline; }
+        .mc-italic { font-style: italic; }
+        
+        @keyframes obfuscated {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+        
+        .truncated-notes {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .truncated-description {
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .compact-column {
+            width: 80px;
+            min-width: 80px;
+        }
+        
+        .server-column {
+            width: 140px;
+            min-width: 140px;
+        }
+        
+        .software-column {
+            width: 120px;
+            min-width: 120px;
+        }
+        
+        .truncated-version {
+            max-width: 110px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .multi-select {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+        }
+        
+        .multi-select-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .multi-select-option:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .multi-select-button {
+            min-width: 200px;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .sortable-header:hover {
+            background-color: #f9fafb;
+        }
+        
+        .sort-icon {
+            margin-left: 4px;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        
+        .sort-icon.active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div x-data="serverDashboard()" x-init="init()" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">🎮 ServerSeekerV2 Dashboard</h1>
+            <p class="text-gray-600">Track and manage your Minecraft server discoveries</p>
+        </div>
+
+        <!-- Stats Dashboard -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            <div class="bg-blue-500 text-white rounded-lg p-6">
+                <h3 class="text-lg font-semibold">Total Servers</h3>
+                <p class="text-3xl font-bold" x-text="stats.total_servers">-</p>
+            </div>
+            <div class="bg-green-500 text-white rounded-lg p-6">
+                <h3 class="text-lg font-semibold">Visited</h3>
+                <p class="text-3xl font-bold" x-text="stats.visited_servers">-</p>
+            </div>
+            <div class="bg-yellow-500 text-white rounded-lg p-6">
+                <h3 class="text-lg font-semibold">Skipped</h3>
+                <p class="text-3xl font-bold" x-text="stats.skipped_servers">-</p>
+            </div>
+            <div class="bg-orange-500 text-white rounded-lg p-6">
+                <h3 class="text-lg font-semibold">Not Visited</h3>
+                <p class="text-3xl font-bold" x-text="stats.unvisited_servers">-</p>
+            </div>
+            <div class="bg-purple-500 text-white rounded-lg p-6">
+                <h3 class="text-lg font-semibold">Whitelisted</h3>
+                <p class="text-3xl font-bold" x-text="stats.whitelisted_servers">-</p>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex flex-wrap gap-4 items-end">
+                <!-- Filters -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status Filter</label>
+                    <select x-model="filters.status" @change="loadServers()" class="border border-gray-300 rounded-md px-3 py-2">
+                        <option value="">All Servers</option>
+                        <option value="visited">✅ Visited</option>
+                        <option value="skipped">⏭️ Skipped</option>
+                        <option value="whitelisted">⭐ Whitelisted</option>
+                        <option value="not_visited">⭕ Not Visited</option>
+                    </select>
+                </div>
+                
+                <div class="multi-select">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Software</label>
+                    <button @click="softwareDropdownOpen = !softwareDropdownOpen" 
+                            class="border border-gray-300 rounded-md px-3 py-2 multi-select-button" 
+                            type="button">
+                        <span x-text="selectedSoftwareText"></span>
+                        <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': softwareDropdownOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div x-show="softwareDropdownOpen" 
+                         @click.away="softwareDropdownOpen = false"
+                         class="multi-select-dropdown" 
+                         x-transition>
+                        <div class="multi-select-option" @click="toggleAllSoftware()">
+                            <input type="checkbox" :checked="filters.software.length === 0" class="rounded">
+                            <span class="font-medium">All Software</span>
+                        </div>
+                        <template x-for="software in stats.unique_software_types">
+                            <div class="multi-select-option" @click="toggleSoftware(software)">
+                                <input type="checkbox" :checked="filters.software.includes(software)" class="rounded">
+                                <span x-text="software"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Min Players</label>
+                    <input type="number" x-model="filters.min_players" @change="loadServers()" class="border border-gray-300 rounded-md px-3 py-2 w-24" placeholder="0">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                    <select x-model="sorting.field" @change="loadServers()" class="border border-gray-300 rounded-md px-3 py-2">
+                        <option value="last_seen">Last Seen</option>
+                        <option value="first_seen">First Seen</option>
+                        <option value="online_players">Players Online</option>
+                        <option value="max_players">Max Players</option>
+                        <option value="address">Server Address</option>
+                        <option value="software">Software</option>
+                        <option value="country">Country</option>
+                        <option value="rating">Rating</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Order</label>
+                    <select x-model="sorting.order" @change="loadServers()" class="border border-gray-300 rounded-md px-3 py-2">
+                        <option value="desc">Descending</option>
+                        <option value="asc">Ascending</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
+                    <select x-model="pagination.limit" @change="loadServers()" class="border border-gray-300 rounded-md px-3 py-2">
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+
+
+                <!-- Refresh Button -->
+                <button @click="loadServers(); loadStats()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md">
+                    🔄 Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Servers List -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-800">Minecraft Servers</h2>
+                    <p class="text-gray-600 text-sm" x-text="`Showing ${servers.length} servers`"></p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="pagination.offset = Math.max(0, pagination.offset - parseInt(pagination.limit)); loadServers()" :disabled="pagination.offset === 0" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Previous</button>
+                    <span class="text-sm text-gray-600" x-text="`Page ${Math.floor(pagination.offset / parseInt(pagination.limit)) + 1}`"></span>
+                    <button @click="pagination.offset += parseInt(pagination.limit); loadServers()" :disabled="servers.length < parseInt(pagination.limit)" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Next</button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider server-column">
+                                <div class="sortable-header" @click="setSorting('address')">
+                                    <span>Server</span>
+                                    <svg class="w-3 h-3 sort-icon" :class="{ 'active': sorting.field === 'address' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              :d="sorting.field === 'address' && sorting.order === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"></path>
+                                    </svg>
+                                </div>
+                            </th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider software-column">
+                                <div class="sortable-header" @click="setSorting('software')">
+                                    <span>Software</span>
+                                    <svg class="w-3 h-3 sort-icon" :class="{ 'active': sorting.field === 'software' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              :d="sorting.field === 'software' && sorting.order === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"></path>
+                                    </svg>
+                                </div>
+                            </th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider compact-column">
+                                <div class="sortable-header" @click="setSorting('online_players')">
+                                    <span>Players</span>
+                                    <svg class="w-3 h-3 sort-icon" :class="{ 'active': sorting.field === 'online_players' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              :d="sorting.field === 'online_players' && sorting.order === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"></path>
+                                    </svg>
+                                </div>
+                            </th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider compact-column">
+                                <div class="sortable-header" @click="setSorting('rating')">
+                                    <span>Rating</span>
+                                    <svg class="w-3 h-3 sort-icon" :class="{ 'active': sorting.field === 'rating' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              :d="sorting.field === 'rating' && sorting.order === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"></path>
+                                    </svg>
+                                </div>
+                            </th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider compact-column">Status</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="server in servers" :key="server.address + ':' + server.port">
+                            <tr>
+                                <td class="px-3 py-3 whitespace-nowrap server-column">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 truncate" x-text="server.address + ':' + server.port" :title="server.address + ':' + server.port"></div>
+                                        <div class="text-xs text-gray-500 truncate" x-text="server.country"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap software-column">
+                                    <div>
+                                        <div class="text-sm text-gray-900 truncate" x-text="server.software || 'Unknown'" :title="server.software || 'Unknown'"></div>
+                                        <div class="text-xs text-gray-500 truncated-version" x-text="server.version" :title="server.version"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900 compact-column">
+                                    <span x-text="(server.online_players || 0) + '/' + (server.max_players || '?')"></span>
+                                </td>
+                                <td class="px-3 py-3">
+                                    <div class="text-sm text-gray-900 truncated-description" x-html="server.description_formatted || 'No description'" :title="server.description_formatted?.replace(/<[^>]*>/g, '') || 'No description'"></div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900 compact-column">
+                                    <span x-show="server.rating">
+                                        <span x-text="'⭐'.repeat(server.rating)"></span>
+                                    </span>
+                                    <span x-show="!server.rating" class="text-gray-400">-</span>
+                                </td>
+                                <td class="px-3 py-3">
+                                    <div class="text-sm text-gray-900 truncated-notes" x-text="server.notes || '-'" :title="server.notes"></div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap compact-column">
+                                    <span x-show="server.status === 'visited'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        ✅
+                                    </span>
+                                    <span x-show="server.status === 'skipped'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        ⏭️
+                                    </span>
+                                    <span x-show="server.status === 'whitelisted'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                        ⭐
+                                    </span>
+                                    <span x-show="server.status === 'not_visited'" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                        ⭕
+                                    </span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap text-sm space-x-1">
+                                    <button @click="markStatus(server, 'visited')" 
+                                            x-show="server.status === 'not_visited'"
+                                            class="text-green-600 hover:text-green-900 text-xs">
+                                        ✅ Visited
+                                    </button>
+                                    <button @click="markStatus(server, 'skipped')" 
+                                            x-show="server.status === 'not_visited'"
+                                            class="text-yellow-600 hover:text-yellow-900 text-xs">
+                                        ⏭️ Skip
+                                    </button>
+                                    <button @click="markStatus(server, 'whitelisted')" 
+                                            x-show="server.status === 'not_visited'"
+                                            class="text-purple-600 hover:text-purple-900 text-xs">
+                                        ⭐ Whitelist
+                                    </button>
+                                    <button @click="openEditModal(server)" 
+                                            x-show="server.status !== 'not_visited'"
+                                            class="text-blue-600 hover:text-blue-900 text-xs">
+                                        Edit
+                                    </button>
+                                    <button @click="copyServerAddress(server)" 
+                                            class="text-gray-600 hover:text-gray-900">
+                                        📋 Copy
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Edit Visit Modal -->
+        <div x-show="editModal.show" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50" x-transition>
+            <div class="bg-white rounded-lg p-6 w-96">
+                <h3 class="text-lg font-semibold mb-4">Edit Server Visit</h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Server</label>
+                    <p class="text-gray-600" x-text="editModal.server?.address + ':' + editModal.server?.port"></p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select x-model="editModal.status" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        <option value="visited">✅ Visited</option>
+                        <option value="skipped">⏭️ Skipped</option>
+                        <option value="whitelisted">⭐ Whitelisted</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Rating (1-5)</label>
+                    <select x-model="editModal.rating" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                        <option value="">No rating</option>
+                        <option value="1">⭐ 1 - Poor</option>
+                        <option value="2">⭐⭐ 2 - Fair</option>
+                        <option value="3">⭐⭐⭐ 3 - Good</option>
+                        <option value="4">⭐⭐⭐⭐ 4 - Great</option>
+                        <option value="5">⭐⭐⭐⭐⭐ 5 - Excellent</option>
+                    </select>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                    <textarea x-model="editModal.notes" class="w-full border border-gray-300 rounded-md px-3 py-2" rows="3" placeholder="Add your notes about this server..."></textarea>
+                </div>
+                <div class="flex space-x-3">
+                    <button @click="saveVisit()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md">Save</button>
+                    <button @click="editModal.show = false" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-md">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function serverDashboard() {
+            return {
+                servers: [],
+                stats: {},
+                filters: {
+                    status: '',
+                    software: [],
+                    min_players: '',
+                },
+                sorting: {
+                    field: 'last_seen',
+                    order: 'desc',
+                },
+                softwareDropdownOpen: false,
+                pagination: {
+                    limit: '100',
+                    offset: 0,
+                },
+                editModal: {
+                    show: false,
+                    server: null,
+                    status: '',
+                    notes: '',
+                    rating: '',
+                },
+
+                async init() {
+                    await this.loadStats();
+                    await this.loadServers();
+                },
+
+                async loadStats() {
+                    try {
+                        const response = await fetch('/api/stats');
+                        this.stats = await response.json();
+                    } catch (error) {
+                        console.error('Error loading stats:', error);
+                    }
+                },
+
+                async loadServers() {
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.filters.status) params.set('status', this.filters.status);
+                        if (this.filters.software.length > 0) {
+                            params.set('software', this.filters.software.join(','));
+                        }
+                        if (this.filters.min_players) params.set('min_players', this.filters.min_players);
+                        params.set('sort_by', this.sorting.field);
+                        params.set('sort_order', this.sorting.order);
+                        params.set('limit', this.pagination.limit);
+                        params.set('offset', this.pagination.offset);
+                        
+                        const response = await fetch(`/api/servers?${params}`);
+                        this.servers = await response.json();
+                    } catch (error) {
+                        console.error('Error loading servers:', error);
+                    }
+                },
+
+                async markStatus(server, status) {
+                    try {
+                        const response = await fetch(`/api/servers/${server.address}/${server.port}/visit`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: status, notes: null, rating: null }),
+                        });
+                        
+                        if (response.ok) {
+                            await this.loadServers();
+                            await this.loadStats();
+                        }
+                    } catch (error) {
+                        console.error('Error marking server status:', error);
+                    }
+                },
+
+                async markVisited(server) {
+                    try {
+                        const response = await fetch(`/api/servers/${server.address}/${server.port}/visit`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notes: null, rating: null }),
+                        });
+                        
+                        if (response.ok) {
+                            await this.loadServers();
+                            await this.loadStats();
+                        }
+                    } catch (error) {
+                        console.error('Error marking server as visited:', error);
+                    }
+                },
+
+                openEditModal(server) {
+                    this.editModal.server = server;
+                    this.editModal.status = server.status || 'visited';
+                    this.editModal.notes = server.notes || '';
+                    this.editModal.rating = server.rating || '';
+                    this.editModal.show = true;
+                },
+
+                async saveVisit() {
+                    try {
+                        const response = await fetch(`/api/servers/${this.editModal.server.address}/${this.editModal.server.port}/visit`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                status: this.editModal.status,
+                                notes: this.editModal.notes || null,
+                                rating: this.editModal.rating ? parseInt(this.editModal.rating) : null,
+                            }),
+                        });
+                        
+                        if (response.ok) {
+                            this.editModal.show = false;
+                            await this.loadServers();
+                        }
+                    } catch (error) {
+                        console.error('Error saving visit:', error);
+                    }
+                },
+
+
+                copyServerAddress(server) {
+                    const address = `${server.address}:${server.port}`;
+                    navigator.clipboard.writeText(address).then(() => {
+                        // You could show a toast notification here
+                        console.log('Copied to clipboard:', address);
+                    });
+                },
+
+                get selectedSoftwareText() {
+                    if (this.filters.software.length === 0) {
+                        return 'All Software';
+                    } else if (this.filters.software.length === 1) {
+                        return this.filters.software[0];
+                    } else {
+                        return `${this.filters.software.length} selected`;
+                    }
+                },
+
+                toggleSoftware(software) {
+                    const index = this.filters.software.indexOf(software);
+                    if (index > -1) {
+                        this.filters.software.splice(index, 1);
+                    } else {
+                        this.filters.software.push(software);
+                    }
+                    this.loadServers();
+                },
+
+                toggleAllSoftware() {
+                    this.filters.software = [];
+                    this.loadServers();
+                },
+
+                setSorting(field) {
+                    if (this.sorting.field === field) {
+                        // Toggle order if clicking the same field
+                        this.sorting.order = this.sorting.order === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        // Set new field with default descending order
+                        this.sorting.field = field;
+                        this.sorting.order = 'desc';
+                    }
+                    this.pagination.offset = 0; // Reset to first page when sorting
+                    this.loadServers();
+                }
+            }
+        }
+    </script>
+</body>
+</html>

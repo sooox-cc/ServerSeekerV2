@@ -19,7 +19,7 @@ indicatif = { version = "0.17" }
 futures-util = "0.3"
 anyhow = "1.0.98"
 clap = { version = "4.5.37", features = ["derive"] }
-reqwest = { version = "0.12.19", features = ["stream", "gzip"] }
+reqwest = { version = "0.12.19", features = ["stream", "gzip", "json"] }
 flate2 = "1.1.1"
 
 [profile.release]

@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/home/sooox/Downloads/ServerSeekerV2/webapp/target/debug/build/mime_guess-eaae5a554bcc8981/out/mime_types_generated.rs

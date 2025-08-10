@@ -1,39 +1,47 @@
+use crate::geo_lookup::GeoLookup;
 use crate::response::Server;
 use crate::utils::RunError;
 use sqlx::postgres::{PgQueryResult, PgRow};
 use sqlx::types::ipnet::{IpNet, Ipv4Net};
 use sqlx::types::Uuid;
 use sqlx::{FromRow, PgPool, Row};
-use std::net::SocketAddrV4;
+use std::net::{IpAddr, SocketAddrV4};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 struct AddressInfo {
-	country_code: String,
+	country: String,
 	asn: String,
 }
 
 impl FromRow<'_, PgRow> for AddressInfo {
 	fn from_row(row: &PgRow) -> Result<Self, sqlx::Error> {
 		Ok(Self {
-			country_code: row.try_get("country_code")?,
+			country: row.try_get("country")?,
 			asn: row.try_get("asn")?,
 		})
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct Database(pub PgPool);
+pub struct Database {
+	pub pool: PgPool,
+	pub geo_lookup: Arc<GeoLookup>,
+}
 
 impl Database {
 	pub fn new(pool: PgPool) -> Self {
-		Self(pool)
+		Self {
+			pool,
+			geo_lookup: Arc::new(GeoLookup::new()),
+		}
 	}
 
 	/// Gets the count of servers from database
 	pub async fn count_servers(&self) -> Result<i64, sqlx::Error> {
 		let result = sqlx::query("SELECT COUNT(*) FROM servers")
-			.fetch_one(&self.0)
+			.fetch_one(&self.pool)
 			.await?
 			.get("count");
 
@@ -44,15 +52,27 @@ impl Database {
 	async fn delete_server(&self, address: IpNet) -> Result<PgQueryResult, sqlx::Error> {
 		sqlx::query("DELETE FROM servers WHERE address = $1")
 			.bind(address)
-			.execute(&self.0)
+			.execute(&self.pool)
 			.await
 	}
 
 	async fn get_country_info(&self, address: &IpNet) -> Result<AddressInfo, sqlx::Error> {
-		sqlx::query_as("SELECT country_code, asn FROM countries WHERE $1 <<= network")
+		// First try the local countries database
+		let result = sqlx::query_as("SELECT country, asn FROM countries WHERE $1 <<= network")
 			.bind(address)
-			.fetch_one(&self.0)
-			.await
+			.fetch_one(&self.pool)
+			.await;
+
+		if let Ok(info) = result {
+			return Ok(info);
+		}
+
+		// If not found in local database, return "Unknown" to avoid rate limiting
+		// The geo lookup could be done in a background task later if needed
+		Ok(AddressInfo {
+			country: "Unknown".to_string(),
+			asn: "Unknown".to_string(),
+		})
 	}
 
 	/// Updates a single server in the database, this includes all mods
@@ -127,9 +147,9 @@ impl Database {
 		.bind(timestamp)
 		.bind(server.players.online)
 		.bind(server.players.max)
-		.bind(address_information.country_code)
+		.bind(address_information.country)
 		.bind(address_information.asn)
-		.execute(&self.0)
+		.execute(&self.pool)
 		.await?;
 
 		if let Some(sample) = server.players.sample {
@@ -144,7 +164,7 @@ impl Database {
 						.bind(player.name)
 						.bind(timestamp)
 						.bind(timestamp)
-						.execute(&self.0)
+						.execute(&self.pool)
 						.await?;
 				}
 			}
@@ -159,7 +179,7 @@ impl Database {
 					.bind(mods.version)
 					.bind(timestamp)
 					.bind(timestamp)
-					.execute(&self.0)
+					.execute(&self.pool)
 					.await?;
 			}
 		}

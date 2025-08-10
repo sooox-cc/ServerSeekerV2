@@ -17,8 +17,6 @@ Blazingly fast Minecraft server scanner written in Rust 🦀 🚀
 <br/>
 <br/>
 
-<a href="https://github.com/sooox-cc/ServerSeekerV2/issues/new">Report Bug</a> -
-<a href="https://github.com/sooox-cc/ServerSeekerV2/issues/new">Request Feature</a>
 </p>
 </div>
 
@@ -30,10 +28,10 @@ ServerSeekerV2 is a complete rewrite of the original ServerSeeker but faster and
 ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory safe. 🦀 🚀
 
 **This is a fork of the original ServerSeekerV2 with additional features:**
-- 🌐 **Web Dashboard**: Complete web interface for managing discovered servers
-- 🔍 **Range Scanner**: Targeted subnet scanning for more efficient discovery
-- 🗺️ **Geo Updates**: Geolocation data updates for servers
-- 📊 **Enhanced Analytics**: Better statistics and server tracking
+- **Web Dashboard**: Complete web interface for managing discovered servers
+- **Range Scanner**: Targeted subnet scanning for more efficient discovery
+- **Geo Updates**: Geolocation data updates for servers
+- **Enhanced Analytics**: Better statistics and server tracking
 
 **Original Project:** [Funtimes909/ServerSeekerV2](https://github.com/Funtimes909/ServerSeekerV2)
 
@@ -52,12 +50,12 @@ ServerSeekerV2 is written in Rust allowing it to be blazingly fast and memory sa
 - **Country tracking**: If enabled, tracks which country and Autonomous System a server is from
 
 ### New Features (this fork)
-- **🌐 Web Dashboard**: Complete web interface built with Axum and Alpine.js for managing discovered servers
-- **🔍 Range Scanner**: Targeted subnet scanning mode (`--mode range-scanner`) for more efficient discovery
-- **🗺️ Geo Updates**: Geographic location updates (`--mode geo-update`) for existing servers
-- **📊 Server Management**: Mark servers as visited, add notes and ratings, filter by status
-- **🎯 Advanced Filtering**: Filter servers by software, player count, country, and visit status
-- **📱 Modern UI**: Responsive design with real-time statistics and intuitive server management
+- **Web Dashboard**: Complete web interface built with Axum and Alpine.js for managing discovered servers
+- **Range Scanner**: Targeted subnet scanning mode (`--mode range-scanner`)
+- **Geo Updates**: Geographic location updates (`--mode geo-update`) for existing servers
+- **Server Management**: Mark servers as visited, add notes and ratings, filter by status
+- **Advanced Filtering**: Filter servers by software, player count, country, and visit status
+- **Modern UI**: Responsive design with real-time statistics and intuitive server management
 
 ## Available Modes
 
